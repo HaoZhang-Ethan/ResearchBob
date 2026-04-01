@@ -1,7 +1,39 @@
+from pathlib import Path
+
+import pytest
+
+from auto_research.cli import main
 from auto_research.models import RegistryEntry
 from auto_research.registry import write_registry
 from auto_research.report import compose_report
 from auto_research.workspace import ensure_workspace
+
+
+def _valid_artifact_text(
+    *,
+    paper_id: str,
+    title: str,
+    confidence: str = "high",
+    relevance_band: str = "high-match",
+    opportunity_label: str = "follow-up",
+) -> str:
+    return (
+        "---\n"
+        f'paper_id: "{paper_id}"\n'
+        f'title: "{title}"\n'
+        f'confidence: "{confidence}"\n'
+        f'relevance_band: "{relevance_band}"\n'
+        f'opportunity_label: "{opportunity_label}"\n'
+        "---\n\n"
+        "# One-Sentence Summary\nA serving scheduler for tail latency.\n\n"
+        "# Problem\nTail latency instability.\n\n"
+        "# Proposed Solution\nQueue-aware scheduling.\n\n"
+        "# Claimed Contributions\n- New scheduler\n\n"
+        "# Evidence Basis\n- Abstract\n\n"
+        "# Limitations\n- Narrow evaluation\n\n"
+        "# Relevance to Profile\nDirectly relevant.\n\n"
+        "# Analyst Notes\nPromising problem, incomplete validation.\n"
+    )
 
 
 def test_compose_daily_report_groups_entries_by_opportunity(tmp_path) -> None:
@@ -26,21 +58,11 @@ def test_compose_daily_report_groups_entries_by_opportunity(tmp_path) -> None:
     paper_dir = workspace / "papers" / "2501.00001v1"
     paper_dir.mkdir(parents=True, exist_ok=True)
     (paper_dir / "problem-solution.md").write_text(
-        "---\n"
-        'paper_id: "2501.00001v1"\n'
-        'title: "Efficient Tail Latency Control for Serving Clusters"\n'
-        'confidence: "high"\n'
-        'relevance_band: "high-match"\n'
-        'opportunity_label: "follow-up"\n'
-        "---\n\n"
-        "# One-Sentence Summary\nA serving scheduler for tail latency.\n\n"
-        "# Problem\nTail latency instability.\n\n"
-        "# Proposed Solution\nQueue-aware scheduling.\n\n"
-        "# Claimed Contributions\n- New scheduler\n\n"
-        "# Evidence Basis\n- Abstract\n\n"
-        "# Limitations\n- Narrow evaluation\n\n"
-        "# Relevance to Profile\nDirectly relevant.\n\n"
-        "# Analyst Notes\nPromising problem, incomplete validation.\n",
+        _valid_artifact_text(
+            paper_id="2501.00001v1",
+            title="Efficient Tail Latency Control for Serving Clusters",
+            opportunity_label="follow-up",
+        ),
         encoding="utf-8",
     )
 
@@ -53,7 +75,163 @@ def test_compose_daily_report_groups_entries_by_opportunity(tmp_path) -> None:
     assert "Efficient Tail Latency Control for Serving Clusters" in report_text
 
 
+def test_compose_daily_report_routes_invalid_artifacts_to_manual_review(
+    tmp_path,
+) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+
+    valid_dir = workspace / "papers" / "2501.00001v1"
+    valid_dir.mkdir(parents=True, exist_ok=True)
+    (valid_dir / "problem-solution.md").write_text(
+        _valid_artifact_text(
+            paper_id="2501.00001v1",
+            title="Efficient Tail Latency Control for Serving Clusters",
+            opportunity_label="read-now",
+        ),
+        encoding="utf-8",
+    )
+
+    invalid_dir = workspace / "papers" / "2501.00002v1"
+    invalid_dir.mkdir(parents=True, exist_ok=True)
+    (invalid_dir / "problem-solution.md").write_text(
+        "---\n"
+        'paper_id: "2501.00002v1"\n'
+        'title: "Do Not Trust This Title"\n'
+        'confidence: "high"\n'
+        'relevance_band: "high-match"\n'
+        'opportunity_label: "read-now"\n'
+        "---\n\n"
+        "# One-Sentence Summary\nBroken artifact.\n",
+        encoding="utf-8",
+    )
+
+    malformed_dir = workspace / "papers" / "2501.00003v1"
+    malformed_dir.mkdir(parents=True, exist_ok=True)
+    (malformed_dir / "problem-solution.md").write_text(
+        "# Not a valid extraction artifact\n",
+        encoding="utf-8",
+    )
+
+    report_text = compose_report(
+        workspace,
+        mode="daily",
+        label="2026-03-31",
+    ).read_text(encoding="utf-8")
+
+    assert "Efficient Tail Latency Control for Serving Clusters" in report_text
+    assert "Papers Requiring Manual Verification" in report_text
+    assert "2501.00002v1" in report_text
+    assert "2501.00003v1" in report_text
+    assert "Do Not Trust This Title" not in report_text
+    assert "Missing heading: Problem" in report_text
+    assert "Missing YAML frontmatter" in report_text
+
+
 def test_compose_manual_report_writes_to_manual_directory(tmp_path) -> None:
     workspace = ensure_workspace(tmp_path / "research-workspace")
     report_path = compose_report(workspace, mode="manual", label="ml-serving-scan")
     assert report_path == workspace / "reports" / "manual" / "ml-serving-scan.md"
+
+
+def test_compose_report_rejects_labels_that_escape_workspace(tmp_path) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+
+    with pytest.raises(ValueError, match="Invalid report label"):
+        compose_report(workspace, mode="daily", label="../outside")
+
+
+def test_compose_report_cli_writes_report_and_prints_path(tmp_path, capsys) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+    paper_dir = workspace / "papers" / "2501.00001v1"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    (paper_dir / "problem-solution.md").write_text(
+        _valid_artifact_text(
+            paper_id="2501.00001v1",
+            title="Efficient Tail Latency Control for Serving Clusters",
+            opportunity_label="follow-up",
+        ),
+        encoding="utf-8",
+    )
+
+    result = main(
+        [
+            "compose-report",
+            "--workspace",
+            str(workspace),
+            "--mode",
+            "daily",
+            "--label",
+            "2026-03-31",
+        ]
+    )
+
+    assert result == 0
+    captured = capsys.readouterr()
+    assert str(workspace / "reports" / "daily" / "2026-03-31.md") in captured.out
+
+
+def test_compose_report_cli_rejects_invalid_label(tmp_path, capsys) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+
+    result = main(
+        [
+            "compose-report",
+            "--workspace",
+            str(workspace),
+            "--mode",
+            "daily",
+            "--label",
+            "../outside",
+        ]
+    )
+
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "Invalid report label" in captured.err
+    assert not (workspace.parent / "outside.md").exists()
+
+
+def test_intake_cli_accepts_profile_equals_override(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    profile_path = tmp_path / "interest-profile.md"
+    profile_path.write_text(
+        Path("tests/fixtures/interest_profile.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    calls: list[dict[str, object]] = []
+
+    def fake_run_intake(
+        workspace: Path,
+        profile_path: Path,
+        max_results: int,
+    ) -> list[RegistryEntry]:
+        calls.append(
+            {
+                "workspace": workspace,
+                "profile_path": profile_path,
+                "max_results": max_results,
+            }
+        )
+        return []
+
+    monkeypatch.setattr("auto_research.cli.run_intake", fake_run_intake)
+
+    result = main(
+        [
+            "intake",
+            "--workspace",
+            str(workspace),
+            f"--profile={profile_path}",
+            "--max-results",
+            "3",
+        ]
+    )
+
+    assert result == 0
+    assert calls == [
+        {
+            "workspace": workspace,
+            "profile_path": profile_path,
+            "max_results": 3,
+        }
+    ]

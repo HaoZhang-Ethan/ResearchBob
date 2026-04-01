@@ -15,6 +15,14 @@ from auto_research.report import compose_report
 from auto_research.workspace import ensure_workspace
 
 
+def _raw_argv(argv: Sequence[str] | None) -> list[str]:
+    return list(sys.argv[1:] if argv is None else argv)
+
+
+def _profile_path_was_overridden(argv: Sequence[str]) -> bool:
+    return any(argument == "--profile" or argument.startswith("--profile=") for argument in argv)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="auto-research")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -45,8 +53,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    raw_argv = _raw_argv(argv)
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw_argv)
 
     if args.command == "init-workspace":
         ensure_workspace(Path(args.workspace))
@@ -77,7 +86,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         workspace = Path(args.workspace)
         profile_path = (
             Path(args.profile)
-            if "--profile" in (argv or [])
+            if _profile_path_was_overridden(raw_argv)
             else workspace / "profile" / "interest-profile.md"
         )
         if not profile_path.exists():
@@ -123,11 +132,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if args.command == "compose-report":
-        report_path = compose_report(
-            workspace=Path(args.workspace),
-            mode=args.mode,
-            label=args.label,
-        )
+        try:
+            report_path = compose_report(
+                workspace=Path(args.workspace),
+                mode=args.mode,
+                label=args.label,
+            )
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        except OSError as exc:
+            print(f"Unable to write report: {exc}", file=sys.stderr)
+            return 1
         print(report_path)
         return 0
 
