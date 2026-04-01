@@ -88,6 +88,13 @@ def _paper_directory(workspace: Path, entry: RegistryEntry) -> Path:
     return stable_dir
 
 
+def _refuse_symlink_child(path: Path, *, label: str) -> None:
+    # Never follow symlinks for in-workspace artifacts, even if the target is inside the
+    # workspace. Following (read/write) lets a paper directory escape its sandbox.
+    if path.is_symlink():
+        raise OSError(f"Refusing to use symlinked {label}: {path}")
+
+
 def run_intake(workspace: Path, profile_path: Path, max_results: int = 25) -> list[RegistryEntry]:
     ensure_workspace(workspace)
     profile = load_interest_profile(profile_path)
@@ -117,12 +124,21 @@ def run_intake(workspace: Path, profile_path: Path, max_results: int = 25) -> li
 
     registry_path = workspace / "papers" / "registry.jsonl"
     merged = merge_registry_entries(load_registry(registry_path), normalized)
-    write_registry(registry_path, merged)
 
+    prepared: list[tuple[RegistryEntry, Path]] = []
     for entry in merged:
         paper_dir = _paper_directory(workspace, entry)
         metadata_path = paper_dir / "metadata.json"
+        _refuse_symlink_child(metadata_path, label="metadata file")
+        prepared.append((entry, metadata_path))
+
+    # Only persist registry updates after all paper directories have been validated.
+    # This keeps the registry consistent if later entries hit a safety failure.
+    for entry, metadata_path in prepared:
+        _refuse_symlink_child(metadata_path, label="metadata file")
         metadata_path.write_text(json.dumps(entry.to_dict(), indent=2), encoding="utf-8")
+
+    write_registry(registry_path, merged)
 
     touched_stable_ids = {entry.stable_id for entry in normalized}
     return [entry for entry in merged if entry.stable_id in touched_stable_ids]

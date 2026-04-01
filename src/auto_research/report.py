@@ -83,6 +83,8 @@ def _expected_directory_names(paper_id: str) -> set[str]:
 
 def _load_metadata_arxiv_id(paper_dir: Path) -> tuple[str | None, str | None]:
     metadata_path = paper_dir / METADATA_NAME
+    if metadata_path.is_symlink():
+        return None, f"Refusing to read symlinked {METADATA_NAME}"
     if not metadata_path.exists():
         return None, None
 
@@ -132,6 +134,8 @@ def _manual_review_reason(
 
 def _load_report_entry(paper_dir: Path) -> tuple[str, dict[str, str]] | None:
     artifact_path = paper_dir / PRIMARY_ARTIFACT_NAME
+    if artifact_path.is_symlink():
+        return "manual-review", _invalid_entry(paper_dir, "Refusing to read symlinked artifact")
     if not artifact_path.exists():
         return None
 
@@ -156,6 +160,12 @@ def _load_conflict_entries(paper_dir: Path) -> list[tuple[str, dict[str, str]]]:
     entries: list[tuple[str, dict[str, str]]] = []
 
     for artifact_path in sorted(paper_dir.glob(ARTIFACT_GLOB), key=lambda path: path.name):
+        if artifact_path.is_symlink():
+            reason = "Unexpected artifact file present; Refusing to read symlinked artifact"
+            entries.append(
+                ("manual-review", _named_invalid_entry(paper_dir, artifact_path.name, reason))
+            )
+            continue
         if artifact_path.name == PRIMARY_ARTIFACT_NAME or not artifact_path.is_file():
             continue
 

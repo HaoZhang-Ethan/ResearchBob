@@ -1,7 +1,11 @@
 from pathlib import Path
 
 from auto_research.cli import main as cli_main
-from auto_research.profile import load_interest_profile, validate_interest_profile_text
+from auto_research.profile import (
+    load_interest_profile,
+    parse_interest_profile_text,
+    validate_interest_profile_text,
+)
 
 
 FIXTURE_PATH = Path("tests/fixtures/interest_profile.md")
@@ -142,3 +146,11 @@ This line should not be here.
     errors = validate_interest_profile_text(text)
 
     assert errors == ["Section contains non-bullet content: Core Interests"]
+
+
+def test_interest_profile_parsing_accepts_crlf_line_endings() -> None:
+    crlf_text = FIXTURE_PATH.read_text(encoding="utf-8").replace("\n", "\r\n")
+
+    assert validate_interest_profile_text(crlf_text) == []
+    profile = parse_interest_profile_text(crlf_text)
+    assert "distributed systems for ML serving" in profile.core_interests

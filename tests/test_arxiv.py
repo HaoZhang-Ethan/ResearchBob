@@ -564,3 +564,116 @@ def test_intake_cli_reports_corrupt_registry_instead_of_profile_error(
     captured = capsys.readouterr()
     assert "registry" in captured.err.lower()
     assert "Invalid intake profile" not in captured.err
+
+
+def test_run_intake_rejects_symlinked_metadata_child_without_touching_target(
+    tmp_path, monkeypatch
+) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+    profile_path = workspace / "profile" / "interest-profile.md"
+    profile_path.write_text(
+        Path("tests/fixtures/interest_profile.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    outside_target = tmp_path / "outside-metadata.json"
+    outside_target.write_text('{"do_not_touch": true}\n', encoding="utf-8")
+
+    paper_dir = workspace / "papers" / "2501.00001"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    os.symlink(outside_target, paper_dir / "metadata.json")
+
+    entry = RegistryEntry(
+        arxiv_id="2501.00001v1",
+        title="Paper v1",
+        summary="summary v1",
+        pdf_url="http://example.org/v1.pdf",
+        published_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        relevance_band="adjacent",
+        source="arxiv",
+    )
+
+    def fake_arxiv_client(*args, **kwargs):
+        class FakeClient:
+            def fetch_recent(self, *args: object, **kwargs: object) -> list[RegistryEntry]:
+                return [entry]
+
+        return FakeClient()
+
+    monkeypatch.setattr(intake_module, "ArxivClient", fake_arxiv_client)
+
+    with pytest.raises(OSError, match="symlink"):
+        run_intake(workspace, profile_path, max_results=1)
+
+    assert outside_target.read_text(encoding="utf-8") == '{"do_not_touch": true}\n'
+
+
+def test_run_intake_does_not_persist_registry_when_paper_directory_validation_fails(
+    tmp_path, monkeypatch
+) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+    profile_path = workspace / "profile" / "interest-profile.md"
+    profile_path.write_text(
+        Path("tests/fixtures/interest_profile.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    from auto_research.registry import write_registry
+
+    registry_path = workspace / "papers" / "registry.jsonl"
+    write_registry(
+        registry_path,
+        [
+            RegistryEntry(
+                arxiv_id="2501.12345v1",
+                title="Existing",
+                summary="existing summary",
+                pdf_url="http://example.org/existing.pdf",
+                published_at="2026-01-01T00:00:00Z",
+                updated_at="2026-01-01T00:00:00Z",
+                relevance_band="adjacent",
+                source="arxiv",
+            )
+        ],
+    )
+    before = registry_path.read_text(encoding="utf-8")
+
+    entry_ok = RegistryEntry(
+        arxiv_id="2501.00001v1",
+        title="Paper ok",
+        summary="summary ok",
+        pdf_url="http://example.org/ok.pdf",
+        published_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        relevance_band="adjacent",
+        source="arxiv",
+    )
+    entry_bad = RegistryEntry(
+        arxiv_id="2501.00002v1",
+        title="Paper bad",
+        summary="summary bad",
+        pdf_url="http://example.org/bad.pdf",
+        published_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        relevance_band="adjacent",
+        source="arxiv",
+    )
+
+    outside_dir = tmp_path / "outside-stable-dir"
+    outside_dir.mkdir(parents=True, exist_ok=True)
+    os.symlink(outside_dir, workspace / "papers" / "2501.00002")
+
+    def fake_arxiv_client(*args, **kwargs):
+        class FakeClient:
+            def fetch_recent(self, *args: object, **kwargs: object) -> list[RegistryEntry]:
+                return [entry_ok, entry_bad]
+
+        return FakeClient()
+
+    monkeypatch.setattr(intake_module, "ArxivClient", fake_arxiv_client)
+
+    with pytest.raises(OSError, match="symlink"):
+        run_intake(workspace, profile_path, max_results=2)
+
+    assert registry_path.read_text(encoding="utf-8") == before

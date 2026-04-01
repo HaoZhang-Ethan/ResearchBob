@@ -16,6 +16,12 @@ SECTION_NAMES = (
 SECTION_NAME_SET = set(SECTION_NAMES)
 
 
+def _normalize_newlines(text: str) -> str:
+    # Accept CRLF/CR the same way extraction parsing does: normalize to LF before
+    # running regexes that expect "\n".
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def _heading_pattern() -> re.Pattern[str]:
     return re.compile(r"^## (?P<name>.+)$", re.MULTILINE)
 
@@ -47,6 +53,7 @@ def _has_non_bullet_content(body: str) -> bool:
 
 
 def validate_interest_profile_text(text: str) -> list[str]:
+    text = _normalize_newlines(text)
     errors: list[str] = []
 
     for heading in _heading_pattern().finditer(text):
@@ -71,6 +78,7 @@ def validate_interest_profile_text(text: str) -> list[str]:
 
 
 def parse_interest_profile_text(text: str) -> InterestProfile:
+    text = _normalize_newlines(text)
     errors = validate_interest_profile_text(text)
     if errors:
         raise ValueError("\n".join(errors))
