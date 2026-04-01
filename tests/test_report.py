@@ -1,3 +1,5 @@
+import json
+
 from pathlib import Path
 
 import pytest
@@ -156,6 +158,77 @@ def test_compose_daily_report_surfaces_migrated_conflict_artifacts(tmp_path) -> 
     assert "Papers Requiring Manual Verification" in report_text
     assert "problem-solution.migrated-from-2501.00001v1.md" in report_text
     assert "Missing YAML frontmatter" in report_text
+
+
+def test_compose_daily_report_routes_low_priority_artifacts_to_manual_review(
+    tmp_path,
+) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+    paper_dir = workspace / "papers" / "2501.00001"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    (paper_dir / "problem-solution.md").write_text(
+        _valid_artifact_text(
+            paper_id="2501.00001v2",
+            title="Peripheral Benchmark Sweep",
+            relevance_band="low-priority",
+            opportunity_label="read-now",
+        ),
+        encoding="utf-8",
+    )
+
+    report_text = compose_report(
+        workspace,
+        mode="daily",
+        label="2026-03-31",
+    ).read_text(encoding="utf-8")
+
+    assert "## Top Papers to Read Now\n- None" in report_text
+    assert "Papers Requiring Manual Verification" in report_text
+    assert "Peripheral Benchmark Sweep" in report_text
+    assert "low-priority relevance" in report_text
+
+
+def test_compose_daily_report_routes_identity_mismatches_to_manual_review(
+    tmp_path,
+) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+    paper_dir = workspace / "papers" / "2501.00001"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    (paper_dir / "problem-solution.md").write_text(
+        _valid_artifact_text(
+            paper_id="2501.99999v1",
+            title="Mismatched Identity Artifact",
+            opportunity_label="read-now",
+        ),
+        encoding="utf-8",
+    )
+    (paper_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "arxiv_id": "2501.00001v2",
+                "title": "Canonical Metadata Title",
+                "summary": "summary",
+                "pdf_url": "https://arxiv.org/pdf/2501.00001v2",
+                "published_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-03T00:00:00Z",
+                "relevance_band": "high-match",
+                "source": "arxiv",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report_text = compose_report(
+        workspace,
+        mode="daily",
+        label="2026-03-31",
+    ).read_text(encoding="utf-8")
+
+    assert "## Top Papers to Read Now\n- None" in report_text
+    assert "Papers Requiring Manual Verification" in report_text
+    assert "Mismatched Identity Artifact" in report_text
+    assert "does not match containing directory" in report_text
+    assert "does not match metadata arxiv_id" in report_text
 
 
 def test_compose_manual_report_writes_to_manual_directory(tmp_path) -> None:

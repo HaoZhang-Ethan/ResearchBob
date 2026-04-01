@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 
 from collections import defaultdict
@@ -20,8 +21,10 @@ SECTION_TITLES = {
 }
 ALLOWED_MODES = {"daily", "manual"}
 VALID_LABEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+VERSION_SUFFIX_PATTERN = re.compile(r"^(?P<base>.+)v\d+$")
 PRIMARY_ARTIFACT_NAME = "problem-solution.md"
 ARTIFACT_GLOB = "problem-solution*.md"
+METADATA_NAME = "metadata.json"
 
 
 def _paper_directories(workspace: Path) -> list[Path]:
@@ -45,6 +48,10 @@ def _invalid_entry(paper_dir: Path, reason: str) -> dict[str, str]:
     }
 
 
+def _noted_entry(frontmatter: dict[str, str], reason: str) -> dict[str, str]:
+    return {**frontmatter, "note": reason}
+
+
 def _named_invalid_entry(paper_dir: Path, artifact_name: str, reason: str) -> dict[str, str]:
     return {
         "paper_id": paper_dir.name,
@@ -53,6 +60,63 @@ def _named_invalid_entry(paper_dir: Path, artifact_name: str, reason: str) -> di
         "relevance_band": "unknown",
         "note": reason,
     }
+
+
+def _stable_paper_id(paper_id: str) -> str:
+    match = VERSION_SUFFIX_PATTERN.match(paper_id)
+    return match.group("base") if match else paper_id
+
+
+def _expected_directory_name(paper_id: str) -> str:
+    return _stable_paper_id(paper_id).replace("/", "_")
+
+
+def _load_metadata_arxiv_id(paper_dir: Path) -> tuple[str | None, str | None]:
+    metadata_path = paper_dir / METADATA_NAME
+    if not metadata_path.exists():
+        return None, None
+
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return None, f"Unable to read {METADATA_NAME}: {exc}"
+    except json.JSONDecodeError as exc:
+        return None, f"Invalid {METADATA_NAME}: {exc.msg}"
+
+    arxiv_id = payload.get("arxiv_id")
+    if not isinstance(arxiv_id, str) or not arxiv_id:
+        return None, f"{METADATA_NAME} is missing arxiv_id"
+
+    return arxiv_id, None
+
+
+def _manual_review_reason(
+    paper_dir: Path,
+    frontmatter: dict[str, str],
+) -> str | None:
+    reasons: list[str] = []
+    paper_id = frontmatter["paper_id"]
+
+    if frontmatter["relevance_band"] == "low-priority":
+        reasons.append("Artifact has low-priority relevance")
+
+    if _expected_directory_name(paper_id) != paper_dir.name:
+        reasons.append(
+            f'Artifact paper_id "{paper_id}" does not match containing directory "{paper_dir.name}"'
+        )
+
+    metadata_arxiv_id, metadata_error = _load_metadata_arxiv_id(paper_dir)
+    if metadata_error is not None:
+        reasons.append(metadata_error)
+    elif metadata_arxiv_id is not None and metadata_arxiv_id != paper_id:
+        reasons.append(
+            f'Artifact paper_id "{paper_id}" does not match metadata arxiv_id "{metadata_arxiv_id}"'
+        )
+
+    if not reasons:
+        return None
+
+    return "; ".join(reasons)
 
 
 def _load_report_entry(paper_dir: Path) -> tuple[str, dict[str, str]] | None:
@@ -70,6 +134,10 @@ def _load_report_entry(paper_dir: Path) -> tuple[str, dict[str, str]] | None:
         return "manual-review", _invalid_entry(paper_dir, "; ".join(errors))
 
     frontmatter = parse_extraction_document(text)
+    review_reason = _manual_review_reason(paper_dir, frontmatter)
+    if review_reason is not None:
+        return "manual-review", _noted_entry(frontmatter, review_reason)
+
     return frontmatter["opportunity_label"], {**frontmatter, "note": ""}
 
 
@@ -132,7 +200,7 @@ def compose_report(workspace: Path, mode: str, label: str) -> Path:
                     f'confidence: {entry["confidence"]}, relevance: {entry["relevance_band"]})'
                 )
                 if entry["note"]:
-                    line = f"{line} - invalid artifact: {entry['note']}"
+                    line = f"{line} - note: {entry['note']}"
                 lines.append(line)
         lines.append("")
 
