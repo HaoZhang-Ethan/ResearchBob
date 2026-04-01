@@ -29,10 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     intake = subparsers.add_parser("intake")
     intake.add_argument("--workspace", default="research-workspace")
-    intake.add_argument(
-        "--profile",
-        default="research-workspace/profile/interest-profile.md",
-    )
+    intake.add_argument("--profile")
     intake.add_argument("--max-results", type=int, default=25)
 
     validate_extraction = subparsers.add_parser("validate-extraction")
@@ -62,7 +59,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             text = profile_path.read_text(encoding="utf-8")
         except OSError as exc:
-            print(f"Unable to read profile path: {exc}", file=sys.stderr)
+            print(f"Unable to read profile: {exc}", file=sys.stderr)
             return 1
         errors = validate_interest_profile_text(text)
         if errors:
@@ -74,13 +71,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "intake":
         workspace = Path(args.workspace)
-        profile_path = Path(args.profile)
-        if not profile_path.exists():
-            print(f"Profile path does not exist: {profile_path}", file=sys.stderr)
-            return 1
-        if not profile_path.is_file():
-            print(f"Profile path is not a file: {profile_path}", file=sys.stderr)
-            return 1
+        profile_path = (
+            Path(args.profile)
+            if args.profile is not None
+            else workspace / "profile" / "interest-profile.md"
+        )
         try:
             profile_text = profile_path.read_text(encoding="utf-8")
         except OSError as exc:
@@ -98,10 +93,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 max_results=args.max_results,
             )
         except httpx.HTTPError as exc:
-            print(f"arXiv fetch failed: {exc}", file=sys.stderr)
+            print(f"Unable to fetch arXiv papers: {exc}", file=sys.stderr)
             return 1
         except ET.ParseError as exc:
-            print(f"arXiv feed parse failed: {exc}", file=sys.stderr)
+            print(f"Unable to parse arXiv feed: {exc}", file=sys.stderr)
             return 1
         except OSError as exc:
             print(f"Intake failed: {exc}", file=sys.stderr)
@@ -125,7 +120,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         errors = validate_extraction_document(text)
         if errors:
             for error in errors:
-                print(error)
+                print(error, file=sys.stderr)
             return 1
         print("problem-solution artifact is valid")
         return 0

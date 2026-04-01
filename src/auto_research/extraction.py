@@ -25,6 +25,10 @@ REQUIRED_HEADINGS = (
 ALLOWED_CONFIDENCE = {"high", "medium", "low"}
 ALLOWED_RELEVANCE = {"high-match", "adjacent", "low-priority"}
 ALLOWED_OPPORTUNITY = {"read-now", "follow-up", "skip", "manual-review"}
+SECTION_PATTERN = re.compile(
+    r"^# (?P<heading>[^\n]+)\n(?P<body>.*?)(?=^# |\Z)",
+    re.MULTILINE | re.DOTALL,
+)
 
 
 def parse_extraction_document(text: str) -> dict[str, str]:
@@ -39,8 +43,16 @@ def parse_extraction_document(text: str) -> dict[str, str]:
     return data
 
 
+def _parse_sections(text: str) -> dict[str, str]:
+    return {
+        match.group("heading").strip(): match.group("body").strip()
+        for match in SECTION_PATTERN.finditer(text)
+    }
+
+
 def validate_extraction_document(text: str) -> list[str]:
     errors: list[str] = []
+    sections = _parse_sections(text)
 
     try:
         frontmatter = parse_extraction_document(text)
@@ -59,7 +71,10 @@ def validate_extraction_document(text: str) -> list[str]:
         errors.append("Invalid opportunity_label value")
 
     for heading in REQUIRED_HEADINGS:
-        if f"# {heading}\n" not in text:
+        if heading not in sections:
             errors.append(f"Missing heading: {heading}")
+            continue
+        if not sections[heading]:
+            errors.append(f"Section has no content: {heading}")
 
     return errors
