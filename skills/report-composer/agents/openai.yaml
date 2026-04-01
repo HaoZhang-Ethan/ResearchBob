@@ -1,0 +1,4 @@
+interface:
+  display_name: "Report Composer"
+  short_description: "Compose daily or manual scout reports"
+  default_prompt: "Use $report-composer to generate today's research scout report."
