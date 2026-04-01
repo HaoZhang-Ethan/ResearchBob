@@ -1,7 +1,10 @@
 import os
 import sys
 import json
+import errno
+import time
 from subprocess import run
+from threading import Thread
 
 import pytest
 
@@ -43,6 +46,16 @@ def test_ensure_workspace_rejects_symlinked_phase_directory(tmp_path) -> None:
 
     with pytest.raises(OSError, match="symlink"):
         ensure_workspace(root)
+
+
+def test_ensure_workspace_rejects_workspace_root_with_symlinked_ancestor(tmp_path) -> None:
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir(parents=True, exist_ok=True)
+    symlink_parent = tmp_path / "symlink-parent"
+    os.symlink(real_parent, symlink_parent)
+
+    with pytest.raises(OSError, match="symlink"):
+        ensure_workspace(symlink_parent / "research-workspace")
 
 
 def test_registry_entry_stable_id_handles_slash_ids() -> None:
@@ -254,6 +267,61 @@ def test_write_registry_rejects_symlinked_destination(tmp_path) -> None:
         write_registry(path, [entry])
 
     assert outside.read_text(encoding="utf-8") == "do not touch\n"
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires os.mkfifo support")
+def test_load_registry_rejects_fifo_targets(tmp_path) -> None:
+    fifo_path = tmp_path / "registry.jsonl"
+    os.mkfifo(fifo_path)
+
+    # If the implementation accidentally opens the FIFO for reading, it would block
+    # until a writer attaches. Provide a short-lived writer so this test never hangs.
+    def poke_writer() -> None:
+        deadline = time.monotonic() + 0.25
+        while time.monotonic() < deadline:
+            try:
+                fd = os.open(fifo_path, os.O_WRONLY | os.O_NONBLOCK)
+            except OSError as exc:
+                if exc.errno == errno.ENXIO:
+                    time.sleep(0.005)
+                    continue
+                return
+            else:
+                os.close(fd)
+                return
+
+    thread = Thread(target=poke_writer, daemon=True)
+    thread.start()
+    try:
+        with pytest.raises(OSError, match="non-regular|fifo|Refusing"):
+            load_registry(fifo_path)
+    finally:
+        thread.join(timeout=1)
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires os.mkfifo support")
+def test_write_registry_rejects_fifo_targets(tmp_path) -> None:
+    fifo_path = tmp_path / "registry.jsonl"
+    os.mkfifo(fifo_path)
+
+    # Keep a FIFO reader open so accidental writers don't block.
+    reader_fd = os.open(fifo_path, os.O_RDONLY | os.O_NONBLOCK)
+    try:
+        entry = RegistryEntry(
+            arxiv_id="2501.00002v1",
+            title="Round trip",
+            summary="serialization test",
+            pdf_url="https://arxiv.org/pdf/2501.00002v1",
+            published_at="2026-02-01T00:00:00Z",
+            updated_at="2026-02-01T00:00:00Z",
+            relevance_band="low-priority",
+            source="arxiv",
+        )
+
+        with pytest.raises(OSError, match="non-regular|fifo|Refusing"):
+            write_registry(fifo_path, [entry])
+    finally:
+        os.close(reader_fd)
 
 
 def test_load_registry_raises_typed_error_on_malformed_json(tmp_path) -> None:

@@ -87,6 +87,8 @@ def _load_metadata_arxiv_id(paper_dir: Path) -> tuple[str | None, str | None]:
         return None, f"Refusing to read symlinked {METADATA_NAME}"
     if not metadata_path.exists():
         return None, None
+    if not metadata_path.is_file():
+        return None, f"Refusing to read non-regular {METADATA_NAME}"
 
     try:
         payload = json.loads(metadata_path.read_text(encoding="utf-8"))
@@ -144,6 +146,8 @@ def _load_report_entry(paper_dir: Path) -> tuple[str, dict[str, str]] | None:
         return "manual-review", _invalid_entry(paper_dir, "Refusing to read symlinked artifact")
     if not artifact_path.exists():
         return None
+    if not artifact_path.is_file():
+        return "manual-review", _invalid_entry(paper_dir, "Refusing to read non-regular artifact")
 
     try:
         text = artifact_path.read_text(encoding="utf-8")
@@ -236,5 +240,7 @@ def compose_report(workspace: Path, mode: str, label: str) -> Path:
     report_path = report_dir / f"{safe_label}.md"
     if report_path.is_symlink():
         raise OSError(f"Refusing to overwrite symlinked report file: {report_path}")
+    if report_path.exists() and not report_path.is_file():
+        raise OSError(f"Refusing to overwrite non-regular report file: {report_path}")
     report_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     return report_path

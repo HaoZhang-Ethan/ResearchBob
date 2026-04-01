@@ -103,6 +103,11 @@ def _refuse_symlink_child(path: Path, *, label: str) -> None:
         raise OSError(f"Refusing to use symlinked {label}: {path}")
 
 
+def _refuse_non_regular_child(path: Path, *, label: str) -> None:
+    if path.exists() and not path.is_file():
+        raise OSError(f"Refusing to use non-regular {label}: {path}")
+
+
 def run_intake(workspace: Path, profile_path: Path, max_results: int = 25) -> list[RegistryEntry]:
     ensure_workspace(workspace)
     try:
@@ -140,6 +145,8 @@ def run_intake(workspace: Path, profile_path: Path, max_results: int = 25) -> li
     registry_path = workspace / "papers" / "registry.jsonl"
     if registry_path.is_symlink():
         raise OSError(f"Refusing to use symlinked registry file: {registry_path}")
+    if registry_path.exists() and not registry_path.is_file():
+        raise OSError(f"Refusing to use non-regular registry file: {registry_path}")
     merged = merge_registry_entries(load_registry(registry_path), normalized)
 
     prepared: list[tuple[RegistryEntry, Path]] = []
@@ -151,12 +158,17 @@ def run_intake(workspace: Path, profile_path: Path, max_results: int = 25) -> li
         paper_dir = _paper_directory(workspace, entry)
         metadata_path = paper_dir / "metadata.json"
         _refuse_symlink_child(metadata_path, label="metadata file")
+        _refuse_non_regular_child(metadata_path, label="metadata file")
         prepared.append((entry, metadata_path))
 
     # Only persist registry updates after all paper directories have been validated.
     # This keeps the registry consistent if later entries hit a safety failure.
+    for _, metadata_path in prepared:
+        _refuse_symlink_child(metadata_path, label="metadata file")
+        _refuse_non_regular_child(metadata_path, label="metadata file")
     for entry, metadata_path in prepared:
         _refuse_symlink_child(metadata_path, label="metadata file")
+        _refuse_non_regular_child(metadata_path, label="metadata file")
         metadata_path.write_text(json.dumps(entry.to_dict(), indent=2), encoding="utf-8")
 
     write_registry(registry_path, merged)

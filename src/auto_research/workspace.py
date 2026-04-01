@@ -10,7 +10,17 @@ PHASE1_DIRECTORIES = (
 )
 
 
+def _refuse_symlinked_ancestor(path: Path) -> None:
+    absolute = path.absolute()
+    current = Path(absolute.parts[0])
+    for part in absolute.parts[1:]:
+        current = current / part
+        if current.is_symlink():
+            raise OSError(f"Refusing to use workspace root with symlinked ancestor: {current}")
+
+
 def ensure_workspace(root: Path) -> Path:
+    _refuse_symlinked_ancestor(root)
     if root.is_symlink():
         raise OSError(f"Refusing to use symlinked workspace root: {root}")
 

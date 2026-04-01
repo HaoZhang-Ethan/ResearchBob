@@ -32,6 +32,8 @@ def load_registry(path: Path) -> list[RegistryEntry]:
         raise OSError(f"Refusing to read symlinked registry file: {path}")
     if not path.exists():
         return []
+    if not path.is_file():
+        raise OSError(f"Refusing to read non-regular registry file: {path}")
 
     entries: list[RegistryEntry] = []
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -87,6 +89,8 @@ def load_registry(path: Path) -> list[RegistryEntry]:
 def write_registry(path: Path, entries: list[RegistryEntry]) -> None:
     if path.is_symlink():
         raise OSError(f"Refusing to write to symlinked registry file: {path}")
+    if path.exists() and not path.is_file():
+        raise OSError(f"Refusing to write to non-regular registry file: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = "\n".join(json.dumps(entry.to_dict(), sort_keys=True) for entry in entries)
     path.write_text(f"{payload}\n" if payload else "", encoding="utf-8")

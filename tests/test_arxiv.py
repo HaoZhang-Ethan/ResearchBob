@@ -350,6 +350,58 @@ def test_intake_rejects_symlinked_registry_before_writing_metadata(
     assert not (stable_dir / "metadata.json").exists()
 
 
+def test_intake_does_not_partially_write_metadata_when_late_destination_is_invalid(
+    tmp_path, monkeypatch
+) -> None:
+    workspace = tmp_path / "research-workspace"
+    profile_source = Path("tests/fixtures/interest_profile.md")
+    profile_path = tmp_path / "interest_profile.md"
+    profile_path.write_text(profile_source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    entry_a = RegistryEntry(
+        arxiv_id="2501.00001v1",
+        title="Paper A",
+        summary="summary a",
+        pdf_url="http://example.org/a.pdf",
+        published_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        relevance_band="adjacent",
+        source="arxiv",
+    )
+    entry_b = RegistryEntry(
+        arxiv_id="2501.00002v1",
+        title="Paper B",
+        summary="summary b",
+        pdf_url="http://example.org/b.pdf",
+        published_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    def fake_arxiv_client(*args, **kwargs):
+        class FakeClient:
+            def fetch_recent(self, *args: object, **kwargs: object) -> list[RegistryEntry]:
+                return [entry_a, entry_b]
+
+        return FakeClient()
+
+    monkeypatch.setattr(intake_module, "ArxivClient", fake_arxiv_client)
+
+    # Make the *second* metadata destination invalid. Legacy behavior would write A's
+    # metadata, then error on B, leaving partial state behind.
+    stable_dir_b = workspace / "papers" / entry_b.stable_id.replace("/", "_")
+    stable_dir_b.mkdir(parents=True, exist_ok=True)
+    (stable_dir_b / "metadata.json").mkdir()
+
+    with pytest.raises(OSError, match="metadata"):
+        run_intake(workspace, profile_path, max_results=2)
+
+    stable_dir_a = workspace / "papers" / entry_a.stable_id.replace("/", "_")
+    assert not (stable_dir_a / "metadata.json").exists()
+    assert not (workspace / "papers" / "registry.jsonl").exists()
+
+
 def test_intake_reuses_stable_directory_for_version_updates(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
     profile_source = Path("tests/fixtures/interest_profile.md")
