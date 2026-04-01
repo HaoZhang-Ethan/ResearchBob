@@ -145,6 +145,20 @@ def test_intake_cli_handles_missing_default_profile(tmp_path, capsys) -> None:
     assert "Unable to read intake profile:" in captured.err
 
 
+def test_intake_cli_handles_malformed_profile(tmp_path, capsys) -> None:
+    workspace = tmp_path / "research-workspace"
+    profile_path = tmp_path / "bad-profile.md"
+    profile_path.write_text("# not a valid profile\n", encoding="utf-8")
+
+    result = main(
+        ["intake", "--workspace", str(workspace), "--profile", str(profile_path)]
+    )
+
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "Invalid intake profile:" in captured.err
+
+
 def test_intake_reuses_stable_directory_for_version_updates(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
     profile_source = Path("tests/fixtures/interest_profile.md")

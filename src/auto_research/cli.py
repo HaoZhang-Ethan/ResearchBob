@@ -76,6 +76,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         except OSError as exc:
             print(f"Unable to read intake profile: {exc}", file=sys.stderr)
             return 1
+        except ValueError as exc:
+            print(f"Invalid intake profile: {exc}", file=sys.stderr)
+            return 1
         print(f"ingested {len(entries)} papers")
         return 0
 
