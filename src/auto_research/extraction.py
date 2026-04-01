@@ -21,6 +21,11 @@ REQUIRED_HEADINGS = (
     "Relevance to Profile",
     "Analyst Notes",
 )
+LIST_HEADINGS = {
+    "Claimed Contributions",
+    "Evidence Basis",
+    "Limitations",
+}
 
 ALLOWED_CONFIDENCE = {"high", "medium", "low"}
 ALLOWED_RELEVANCE = {"high-match", "adjacent", "low-priority"}
@@ -32,7 +37,8 @@ SECTION_PATTERN = re.compile(
 
 
 def parse_extraction_document(text: str) -> dict[str, str]:
-    frontmatter_match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+    normalized_text = _normalize_newlines(text)
+    frontmatter_match = re.match(r"^---\n(.*?)\n---(?:\n|$)", normalized_text, re.DOTALL)
     if frontmatter_match is None:
         raise ValueError("Missing YAML frontmatter")
 
@@ -43,21 +49,43 @@ def parse_extraction_document(text: str) -> dict[str, str]:
     return data
 
 
-def _parse_sections(text: str) -> dict[str, str]:
-    return {
-        match.group("heading").strip(): match.group("body").strip()
-        for match in SECTION_PATTERN.finditer(text)
-    }
+def _normalize_newlines(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _iter_sections(text: str) -> list[tuple[str, str]]:
+    normalized_text = _normalize_newlines(text)
+    return [
+        (match.group("heading").strip(), match.group("body").strip())
+        for match in SECTION_PATTERN.finditer(normalized_text)
+    ]
+
+
+def _section_has_content(heading: str, body: str) -> bool:
+    if not body:
+        return False
+    if heading not in LIST_HEADINGS:
+        return True
+
+    nonempty_lines = [line.strip() for line in body.splitlines() if line.strip()]
+    return any(not re.fullmatch(r"-\s*", line) for line in nonempty_lines)
 
 
 def validate_extraction_document(text: str) -> list[str]:
     errors: list[str] = []
-    sections = _parse_sections(text)
+    sections: dict[str, str] = {}
+    duplicate_headings: list[str] = []
 
     try:
         frontmatter = parse_extraction_document(text)
     except ValueError as exc:
         return [str(exc)]
+
+    for heading, body in _iter_sections(text):
+        if heading in sections:
+            duplicate_headings.append(heading)
+            continue
+        sections[heading] = body
 
     for key in REQUIRED_FRONTMATTER_KEYS:
         if not frontmatter.get(key):
@@ -70,11 +98,14 @@ def validate_extraction_document(text: str) -> list[str]:
     if frontmatter.get("opportunity_label") not in ALLOWED_OPPORTUNITY:
         errors.append("Invalid opportunity_label value")
 
+    for heading in sorted(set(duplicate_headings)):
+        errors.append(f"Duplicate heading: {heading}")
+
     for heading in REQUIRED_HEADINGS:
         if heading not in sections:
             errors.append(f"Missing heading: {heading}")
             continue
-        if not sections[heading]:
+        if not _section_has_content(heading, sections[heading]):
             errors.append(f"Section has no content: {heading}")
 
     return errors

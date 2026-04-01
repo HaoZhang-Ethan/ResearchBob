@@ -53,6 +53,61 @@ def test_validate_extraction_document_rejects_empty_section_body() -> None:
     assert "Section has no content: Problem" in errors
 
 
+def test_validate_extraction_document_rejects_duplicate_headings() -> None:
+    errors = validate_extraction_document(
+        "---\n"
+        'paper_id: "2501.00001v1"\n'
+        'title: "Paper"\n'
+        'confidence: "high"\n'
+        'relevance_band: "high-match"\n'
+        'opportunity_label: "read-now"\n'
+        "---\n\n"
+        "# One-Sentence Summary\nSummary text.\n\n"
+        "# Problem\nFirst problem statement.\n\n"
+        "# Problem\nSecond problem statement.\n\n"
+        "# Proposed Solution\nSolution text.\n\n"
+        "# Claimed Contributions\n- contribution\n\n"
+        "# Evidence Basis\n- Abstract\n\n"
+        "# Limitations\n- narrow evaluation\n\n"
+        "# Relevance to Profile\nRelevant.\n\n"
+        "# Analyst Notes\nNotes.\n"
+    )
+
+    assert "Duplicate heading: Problem" in errors
+
+
+def test_validate_extraction_document_rejects_placeholder_list_bullets() -> None:
+    errors = validate_extraction_document(
+        "---\n"
+        'paper_id: "2501.00001v1"\n'
+        'title: "Paper"\n'
+        'confidence: "high"\n'
+        'relevance_band: "high-match"\n'
+        'opportunity_label: "read-now"\n'
+        "---\n\n"
+        "# One-Sentence Summary\nSummary text.\n\n"
+        "# Problem\nProblem text.\n\n"
+        "# Proposed Solution\nSolution text.\n\n"
+        "# Claimed Contributions\n- \n\n"
+        "# Evidence Basis\n- \n\n"
+        "# Limitations\n- \n\n"
+        "# Relevance to Profile\nRelevant.\n\n"
+        "# Analyst Notes\nNotes.\n"
+    )
+
+    assert "Section has no content: Claimed Contributions" in errors
+    assert "Section has no content: Evidence Basis" in errors
+    assert "Section has no content: Limitations" in errors
+
+
+def test_validate_extraction_document_accepts_crlf_line_endings() -> None:
+    text = FIXTURE_PATH.read_text(encoding="utf-8").replace("\n", "\r\n")
+
+    errors = validate_extraction_document(text)
+
+    assert errors == []
+
+
 def test_validate_extraction_cli_prints_errors_to_stderr(tmp_path, capsys) -> None:
     artifact_path = tmp_path / "problem-solution.md"
     artifact_path.write_text(
