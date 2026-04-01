@@ -197,6 +197,50 @@ def test_intake_cli_handles_malformed_profile(tmp_path, capsys) -> None:
     assert "Invalid intake profile:" in captured.err
 
 
+def test_intake_cli_reports_invalid_arxiv_id_as_data_error(tmp_path, monkeypatch, capsys) -> None:
+    workspace = tmp_path / "research-workspace"
+    profile_source = Path("tests/fixtures/interest_profile.md")
+    profile_path = tmp_path / "interest_profile.md"
+    profile_path.write_text(profile_source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    bad_entry = RegistryEntry(
+        arxiv_id="..",
+        title="Bad arXiv id",
+        summary="This should never ingest",
+        pdf_url="http://example.org/bad.pdf",
+        published_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    def fake_arxiv_client(*args, **kwargs):
+        class FakeClient:
+            def fetch_recent(self, *args: object, **kwargs: object) -> list[RegistryEntry]:
+                return [bad_entry]
+
+        return FakeClient()
+
+    monkeypatch.setattr(intake_module, "ArxivClient", fake_arxiv_client)
+
+    result = main(
+        [
+            "intake",
+            "--workspace",
+            str(workspace),
+            "--profile",
+            str(profile_path),
+            "--max-results",
+            "1",
+        ]
+    )
+
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "Invalid intake data:" in captured.err
+    assert "arxiv_id" in captured.err.lower()
+
+
 def test_intake_cli_handles_network_failures(tmp_path, monkeypatch, capsys) -> None:
     workspace = tmp_path / "research-workspace"
     profile_source = Path("tests/fixtures/interest_profile.md")
@@ -262,6 +306,48 @@ def test_intake_deduplicates_multiple_versions_in_single_fetch(tmp_path, monkeyp
         if line.strip()
     ]
     assert [row["arxiv_id"] for row in registry_rows] == [entry_v2.arxiv_id]
+
+
+def test_intake_rejects_symlinked_registry_before_writing_metadata(
+    tmp_path, monkeypatch
+) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+    profile_source = Path("tests/fixtures/interest_profile.md")
+    profile_path = tmp_path / "interest_profile.md"
+    profile_path.write_text(profile_source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    outside_registry = tmp_path / "outside-registry.jsonl"
+    outside_registry.write_text("", encoding="utf-8")
+
+    registry_path = workspace / "papers" / "registry.jsonl"
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    os.symlink(outside_registry, registry_path)
+
+    entry = RegistryEntry(
+        arxiv_id="2501.00001v1",
+        title="Paper v1",
+        summary="summary v1",
+        pdf_url="http://example.org/v1.pdf",
+        published_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        relevance_band="adjacent",
+        source="arxiv",
+    )
+
+    def fake_arxiv_client(*args, **kwargs):
+        class FakeClient:
+            def fetch_recent(self, *args: object, **kwargs: object) -> list[RegistryEntry]:
+                return [entry]
+
+        return FakeClient()
+
+    monkeypatch.setattr(intake_module, "ArxivClient", fake_arxiv_client)
+
+    stable_dir = workspace / "papers" / entry.stable_id.replace("/", "_")
+    with pytest.raises(OSError, match="symlinked registry"):
+        run_intake(workspace, profile_path, max_results=1)
+
+    assert not (stable_dir / "metadata.json").exists()
 
 
 def test_intake_reuses_stable_directory_for_version_updates(tmp_path, monkeypatch) -> None:

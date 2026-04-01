@@ -9,7 +9,7 @@ from typing import Sequence
 import httpx
 
 from auto_research.extraction import validate_extraction_document
-from auto_research.intake import run_intake
+from auto_research.intake import IntakeDataError, IntakeProfileError, run_intake
 from auto_research.profile import validate_interest_profile_text
 from auto_research.registry import RegistryCorruptionError
 from auto_research.report import compose_report
@@ -108,8 +108,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         except OSError as exc:
             print(f"Intake failed: {exc}", file=sys.stderr)
             return 1
-        except ValueError as exc:
+        except IntakeProfileError as exc:
             print(f"Invalid intake profile: {exc}", file=sys.stderr)
+            return 1
+        except IntakeDataError as exc:
+            print(f"Invalid intake data: {exc}", file=sys.stderr)
+            return 1
+        except ValueError as exc:
+            print(f"Intake failed: {exc}", file=sys.stderr)
             return 1
         except httpx.HTTPError as exc:
             print(f"Unable to fetch arXiv papers: {exc}", file=sys.stderr)

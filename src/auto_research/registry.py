@@ -28,6 +28,8 @@ _ALLOWED_RELEVANCE_BANDS = {"high-match", "adjacent", "low-priority"}
 
 
 def load_registry(path: Path) -> list[RegistryEntry]:
+    if path.is_symlink():
+        raise OSError(f"Refusing to read symlinked registry file: {path}")
     if not path.exists():
         return []
 

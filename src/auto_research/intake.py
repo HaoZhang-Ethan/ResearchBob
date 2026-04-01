@@ -11,6 +11,14 @@ from auto_research.registry import load_registry, merge_registry_entries, write_
 from auto_research.workspace import ensure_workspace
 
 
+class IntakeProfileError(ValueError):
+    """Raised when the intake profile cannot be parsed/loaded."""
+
+
+class IntakeDataError(ValueError):
+    """Raised when runtime intake data validation fails (e.g. invalid arXiv ids)."""
+
+
 def _query_term_clause(term: str) -> str:
     escaped = term.replace("\\", "\\\\").replace('"', '\\"')
     return f'all:"{escaped}"'
@@ -97,13 +105,19 @@ def _refuse_symlink_child(path: Path, *, label: str) -> None:
 
 def run_intake(workspace: Path, profile_path: Path, max_results: int = 25) -> list[RegistryEntry]:
     ensure_workspace(workspace)
-    profile = load_interest_profile(profile_path)
+    try:
+        profile = load_interest_profile(profile_path)
+    except ValueError as exc:
+        raise IntakeProfileError(str(exc)) from exc
     query = build_query_from_profile(profile)
     incoming = ArxivClient().fetch_recent(query, max_results=max_results)
 
     normalized: list[RegistryEntry] = []
     for entry in incoming:
-        safe_arxiv_id = validate_arxiv_id(entry.arxiv_id)
+        try:
+            safe_arxiv_id = validate_arxiv_id(entry.arxiv_id)
+        except ValueError as exc:
+            raise IntakeDataError(str(exc)) from exc
         relevance_band = "high-match"
         if any(term.lower() in entry.summary.lower() for term in profile.soft_boundaries):
             relevance_band = "adjacent"
@@ -124,11 +138,16 @@ def run_intake(workspace: Path, profile_path: Path, max_results: int = 25) -> li
         )
 
     registry_path = workspace / "papers" / "registry.jsonl"
+    if registry_path.is_symlink():
+        raise OSError(f"Refusing to use symlinked registry file: {registry_path}")
     merged = merge_registry_entries(load_registry(registry_path), normalized)
 
     prepared: list[tuple[RegistryEntry, Path]] = []
     for entry in merged:
-        validate_arxiv_id(entry.arxiv_id)
+        try:
+            validate_arxiv_id(entry.arxiv_id)
+        except ValueError as exc:
+            raise IntakeDataError(str(exc)) from exc
         paper_dir = _paper_directory(workspace, entry)
         metadata_path = paper_dir / "metadata.json"
         _refuse_symlink_child(metadata_path, label="metadata file")

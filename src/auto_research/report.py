@@ -95,6 +95,9 @@ def _load_metadata_arxiv_id(paper_dir: Path) -> tuple[str | None, str | None]:
     except json.JSONDecodeError as exc:
         return None, f"Invalid {METADATA_NAME}: {exc.msg}"
 
+    if not isinstance(payload, dict):
+        return None, f"Invalid {METADATA_NAME}: expected JSON object"
+
     arxiv_id = payload.get("arxiv_id")
     if not isinstance(arxiv_id, str) or not arxiv_id:
         return None, f"{METADATA_NAME} is missing arxiv_id"
