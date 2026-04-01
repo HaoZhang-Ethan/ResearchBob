@@ -20,6 +20,8 @@ SECTION_TITLES = {
 }
 ALLOWED_MODES = {"daily", "manual"}
 VALID_LABEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+PRIMARY_ARTIFACT_NAME = "problem-solution.md"
+ARTIFACT_GLOB = "problem-solution*.md"
 
 
 def _paper_directories(workspace: Path) -> list[Path]:
@@ -43,8 +45,18 @@ def _invalid_entry(paper_dir: Path, reason: str) -> dict[str, str]:
     }
 
 
+def _named_invalid_entry(paper_dir: Path, artifact_name: str, reason: str) -> dict[str, str]:
+    return {
+        "paper_id": paper_dir.name,
+        "title": artifact_name,
+        "confidence": "invalid",
+        "relevance_band": "unknown",
+        "note": reason,
+    }
+
+
 def _load_report_entry(paper_dir: Path) -> tuple[str, dict[str, str]] | None:
-    artifact_path = paper_dir / "problem-solution.md"
+    artifact_path = paper_dir / PRIMARY_ARTIFACT_NAME
     if not artifact_path.exists():
         return None
 
@@ -61,6 +73,33 @@ def _load_report_entry(paper_dir: Path) -> tuple[str, dict[str, str]] | None:
     return frontmatter["opportunity_label"], {**frontmatter, "note": ""}
 
 
+def _load_conflict_entries(paper_dir: Path) -> list[tuple[str, dict[str, str]]]:
+    entries: list[tuple[str, dict[str, str]]] = []
+
+    for artifact_path in sorted(paper_dir.glob(ARTIFACT_GLOB), key=lambda path: path.name):
+        if artifact_path.name == PRIMARY_ARTIFACT_NAME or not artifact_path.is_file():
+            continue
+
+        try:
+            text = artifact_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            reason = f"Unexpected artifact file present; Unable to read artifact: {exc}"
+            entries.append(
+                ("manual-review", _named_invalid_entry(paper_dir, artifact_path.name, reason))
+            )
+            continue
+
+        errors = validate_extraction_document(text)
+        reason = "Unexpected artifact file present"
+        if errors:
+            reason = f"{reason}; {'; '.join(errors)}"
+        entries.append(
+            ("manual-review", _named_invalid_entry(paper_dir, artifact_path.name, reason))
+        )
+
+    return entries
+
+
 def compose_report(workspace: Path, mode: str, label: str) -> Path:
     if mode not in ALLOWED_MODES:
         raise ValueError(f"Invalid report mode: {mode}")
@@ -72,9 +111,13 @@ def compose_report(workspace: Path, mode: str, label: str) -> Path:
     for paper_dir in _paper_directories(workspace):
         loaded_entry = _load_report_entry(paper_dir)
         if loaded_entry is None:
-            continue
-        opportunity_label, entry = loaded_entry
-        grouped[opportunity_label].append(entry)
+            pass
+        else:
+            opportunity_label, entry = loaded_entry
+            grouped[opportunity_label].append(entry)
+
+        for opportunity_label, entry in _load_conflict_entries(paper_dir):
+            grouped[opportunity_label].append(entry)
 
     lines = [f"# Research Scout Report: {safe_label}", ""]
     for label_key in ("read-now", "follow-up", "skip", "manual-review"):

@@ -127,6 +127,37 @@ def test_compose_daily_report_routes_invalid_artifacts_to_manual_review(
     assert "Missing YAML frontmatter" in report_text
 
 
+def test_compose_daily_report_surfaces_migrated_conflict_artifacts(tmp_path) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+
+    stable_dir = workspace / "papers" / "2501.00001"
+    stable_dir.mkdir(parents=True, exist_ok=True)
+    (stable_dir / "problem-solution.md").write_text(
+        _valid_artifact_text(
+            paper_id="2501.00001v2",
+            title="Efficient Tail Latency Control for Serving Clusters",
+            opportunity_label="read-now",
+        ),
+        encoding="utf-8",
+    )
+    (stable_dir / "problem-solution.migrated-from-2501.00001v1.md").write_text(
+        "legacy artifact",
+        encoding="utf-8",
+    )
+
+    report_text = compose_report(
+        workspace,
+        mode="daily",
+        label="2026-03-31",
+    ).read_text(encoding="utf-8")
+
+    assert "Top Papers to Read Now" in report_text
+    assert "Efficient Tail Latency Control for Serving Clusters" in report_text
+    assert "Papers Requiring Manual Verification" in report_text
+    assert "problem-solution.migrated-from-2501.00001v1.md" in report_text
+    assert "Missing YAML frontmatter" in report_text
+
+
 def test_compose_manual_report_writes_to_manual_directory(tmp_path) -> None:
     workspace = ensure_workspace(tmp_path / "research-workspace")
     report_path = compose_report(workspace, mode="manual", label="ml-serving-scan")
