@@ -30,6 +30,8 @@ LIST_HEADINGS = {
 ALLOWED_CONFIDENCE = {"high", "medium", "low"}
 ALLOWED_RELEVANCE = {"high-match", "adjacent", "low-priority"}
 ALLOWED_OPPORTUNITY = {"read-now", "follow-up", "skip", "manual-review"}
+VALID_BULLET_PATTERN = re.compile(r"-\s+\S.*")
+PLACEHOLDER_BULLET_PATTERN = re.compile(r"-\s*")
 SECTION_PATTERN = re.compile(
     r"^# (?P<heading>[^\n]+)\n(?P<body>.*?)(?=^# |\Z)",
     re.MULTILINE | re.DOTALL,
@@ -45,7 +47,7 @@ def parse_extraction_document(text: str) -> dict[str, str]:
     data: dict[str, str] = {}
     for line in frontmatter_match.group(1).splitlines():
         key, _, value = line.partition(":")
-        data[key.strip()] = value.strip().strip('"')
+        data[key.strip()] = _strip_optional_quotes(value.strip())
     return data
 
 
@@ -61,14 +63,34 @@ def _iter_sections(text: str) -> list[tuple[str, str]]:
     ]
 
 
+def _strip_optional_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        return value[1:-1]
+    return value
+
+
+def _list_section_lines(body: str) -> list[str]:
+    return [line.strip() for line in body.splitlines() if line.strip()]
+
+
+def _section_uses_bullet_format(heading: str, body: str) -> bool:
+    if heading not in LIST_HEADINGS:
+        return True
+    return all(
+        VALID_BULLET_PATTERN.fullmatch(line) or PLACEHOLDER_BULLET_PATTERN.fullmatch(line)
+        for line in _list_section_lines(body)
+    )
+
+
 def _section_has_content(heading: str, body: str) -> bool:
     if not body:
         return False
     if heading not in LIST_HEADINGS:
         return True
 
-    nonempty_lines = [line.strip() for line in body.splitlines() if line.strip()]
-    return any(not re.fullmatch(r"-\s*", line) for line in nonempty_lines)
+    return any(
+        VALID_BULLET_PATTERN.fullmatch(line) for line in _list_section_lines(body)
+    )
 
 
 def validate_extraction_document(text: str) -> list[str]:
@@ -104,6 +126,9 @@ def validate_extraction_document(text: str) -> list[str]:
     for heading in REQUIRED_HEADINGS:
         if heading not in sections:
             errors.append(f"Missing heading: {heading}")
+            continue
+        if not _section_uses_bullet_format(heading, sections[heading]):
+            errors.append(f"Section contains non-bullet content: {heading}")
             continue
         if not _section_has_content(heading, sections[heading]):
             errors.append(f"Section has no content: {heading}")

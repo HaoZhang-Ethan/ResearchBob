@@ -15,6 +15,26 @@ def test_parse_extraction_document_reads_frontmatter() -> None:
     assert parsed["opportunity_label"] == "follow-up"
 
 
+def test_parse_extraction_document_accepts_single_quoted_scalars() -> None:
+    parsed = parse_extraction_document(
+        "---\n"
+        "paper_id: '2501.00001v1'\n"
+        "title: 'Paper'\n"
+        "confidence: 'high'\n"
+        "relevance_band: 'high-match'\n"
+        "opportunity_label: 'follow-up'\n"
+        "---\n"
+    )
+
+    assert parsed == {
+        "paper_id": "2501.00001v1",
+        "title": "Paper",
+        "confidence": "high",
+        "relevance_band": "high-match",
+        "opportunity_label": "follow-up",
+    }
+
+
 def test_validate_extraction_document_rejects_missing_sections() -> None:
     errors = validate_extraction_document(
         "---\n"
@@ -98,6 +118,30 @@ def test_validate_extraction_document_rejects_placeholder_list_bullets() -> None
     assert "Section has no content: Claimed Contributions" in errors
     assert "Section has no content: Evidence Basis" in errors
     assert "Section has no content: Limitations" in errors
+
+
+def test_validate_extraction_document_rejects_prose_in_list_sections() -> None:
+    errors = validate_extraction_document(
+        "---\n"
+        'paper_id: "2501.00001v1"\n'
+        'title: "Paper"\n'
+        'confidence: "high"\n'
+        'relevance_band: "high-match"\n'
+        'opportunity_label: "read-now"\n'
+        "---\n\n"
+        "# One-Sentence Summary\nSummary text.\n\n"
+        "# Problem\nProblem text.\n\n"
+        "# Proposed Solution\nSolution text.\n\n"
+        "# Claimed Contributions\nA contribution in prose.\n\n"
+        "# Evidence Basis\nEvidence in prose.\n\n"
+        "# Limitations\nA limitation in prose.\n\n"
+        "# Relevance to Profile\nRelevant.\n\n"
+        "# Analyst Notes\nNotes.\n"
+    )
+
+    assert "Section contains non-bullet content: Claimed Contributions" in errors
+    assert "Section contains non-bullet content: Evidence Basis" in errors
+    assert "Section contains non-bullet content: Limitations" in errors
 
 
 def test_validate_extraction_document_accepts_crlf_line_endings() -> None:
