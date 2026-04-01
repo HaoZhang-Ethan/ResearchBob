@@ -2,12 +2,15 @@ import os
 import sys
 import json
 import errno
+import shutil
 import time
+from pathlib import Path
 from subprocess import run
 from threading import Thread
 
 import pytest
 
+from auto_research.cli import main as cli_main
 from auto_research.models import RegistryEntry
 from auto_research.registry import (
     load_registry,
@@ -56,6 +59,41 @@ def test_ensure_workspace_rejects_workspace_root_with_symlinked_ancestor(tmp_pat
 
     with pytest.raises(OSError, match="symlink"):
         ensure_workspace(symlink_parent / "research-workspace")
+
+
+def test_init_workspace_cli_accepts_tmp_root(capsys) -> None:
+    tmp_root = Path("/tmp")
+    if not tmp_root.exists():
+        pytest.skip("requires /tmp support")
+
+    workspace = tmp_root / f"auto-research-test-{time.time_ns()}"
+    try:
+        exit_code = cli_main(["init-workspace", "--workspace", str(workspace)])
+        captured = capsys.readouterr()
+
+        assert exit_code == 0
+        assert captured.err == ""
+        assert (workspace / "profile").is_dir()
+        assert (workspace / "papers").is_dir()
+        assert (workspace / "reports" / "daily").is_dir()
+        assert (workspace / "reports" / "manual").is_dir()
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+def test_init_workspace_cli_rejects_symlinked_ancestor_path(tmp_path, capsys) -> None:
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir(parents=True, exist_ok=True)
+    symlink_parent = tmp_path / "symlink-parent"
+    os.symlink(real_parent, symlink_parent)
+
+    exit_code = cli_main(["init-workspace", "--workspace", str(symlink_parent / "workspace")])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "Unable to initialize workspace" in captured.err
+    assert "symlink" in captured.err.lower()
 
 
 def test_registry_entry_stable_id_handles_slash_ids() -> None:

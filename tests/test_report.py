@@ -162,6 +162,33 @@ def test_compose_daily_report_routes_invalid_artifacts_to_manual_review(
     assert "Missing YAML frontmatter" in report_text
 
 
+def test_compose_report_routes_invalid_paper_id_to_manual_review_without_trusting_title(
+    tmp_path,
+) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+
+    paper_dir = workspace / "papers" / "2501.00001v1"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    (paper_dir / "problem-solution.md").write_text(
+        _valid_artifact_text(
+            paper_id="../outside",
+            title="Forged Paper Title",
+            opportunity_label="read-now",
+        ),
+        encoding="utf-8",
+    )
+
+    report_text = compose_report(workspace, mode="daily", label="2026-03-31").read_text(
+        encoding="utf-8"
+    )
+
+    manual_review_section = report_text.split("## Papers Requiring Manual Verification", 1)[1]
+
+    assert "Forged Paper Title" not in report_text
+    assert "2501.00001v1" in manual_review_section
+    assert "Invalid paper_id" in manual_review_section
+
+
 def test_compose_report_ignores_symlinked_paper_directories(tmp_path) -> None:
     workspace = ensure_workspace(tmp_path / "research-workspace")
 

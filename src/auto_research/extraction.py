@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 
+from auto_research.models import validate_arxiv_id
+
 
 REQUIRED_FRONTMATTER_KEYS = (
     "paper_id",
@@ -112,6 +114,13 @@ def validate_extraction_document(text: str) -> list[str]:
     for key in REQUIRED_FRONTMATTER_KEYS:
         if not frontmatter.get(key):
             errors.append(f"Missing frontmatter key: {key}")
+
+    paper_id = frontmatter.get("paper_id")
+    if paper_id:
+        try:
+            validate_arxiv_id(paper_id)
+        except ValueError as exc:
+            errors.append(str(exc).replace("arxiv_id", "paper_id", 1))
 
     if frontmatter.get("confidence") not in ALLOWED_CONFIDENCE:
         errors.append("Invalid confidence value")

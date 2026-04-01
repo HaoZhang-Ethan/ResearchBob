@@ -59,7 +59,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(raw_argv)
 
     if args.command == "init-workspace":
-        ensure_workspace(Path(args.workspace))
+        try:
+            ensure_workspace(Path(args.workspace))
+        except OSError as exc:
+            print(f"Unable to initialize workspace: {exc}", file=sys.stderr)
+            return 1
         return 0
 
     if args.command == "validate-profile":

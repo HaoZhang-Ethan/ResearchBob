@@ -9,6 +9,11 @@ PHASE1_DIRECTORIES = (
     "reports/manual",
 )
 
+_ALLOWED_SYMLINK_ANCESTORS = {
+    Path("/tmp"),
+    Path("/var"),
+}
+
 
 def _refuse_symlinked_ancestor(path: Path) -> None:
     absolute = path.absolute()
@@ -16,6 +21,8 @@ def _refuse_symlinked_ancestor(path: Path) -> None:
     for part in absolute.parts[1:]:
         current = current / part
         if current.is_symlink():
+            if current in _ALLOWED_SYMLINK_ANCESTORS:
+                continue
             raise OSError(f"Refusing to use workspace root with symlinked ancestor: {current}")
 
 

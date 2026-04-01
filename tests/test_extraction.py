@@ -152,6 +152,28 @@ def test_validate_extraction_document_accepts_crlf_line_endings() -> None:
     assert errors == []
 
 
+def test_validate_extraction_document_rejects_invalid_paper_id() -> None:
+    errors = validate_extraction_document(
+        "---\n"
+        'paper_id: "../outside"\n'
+        'title: "Forged Paper"\n'
+        'confidence: "high"\n'
+        'relevance_band: "high-match"\n'
+        'opportunity_label: "read-now"\n'
+        "---\n\n"
+        "# One-Sentence Summary\nSummary text.\n\n"
+        "# Problem\nProblem text.\n\n"
+        "# Proposed Solution\nSolution text.\n\n"
+        "# Claimed Contributions\n- contribution\n\n"
+        "# Evidence Basis\n- Abstract\n\n"
+        "# Limitations\n- narrow evaluation\n\n"
+        "# Relevance to Profile\nRelevant.\n\n"
+        "# Analyst Notes\nNotes.\n"
+    )
+
+    assert any("Invalid paper_id" in error for error in errors)
+
+
 def test_validate_extraction_cli_prints_errors_to_stderr(tmp_path, capsys) -> None:
     artifact_path = tmp_path / "problem-solution.md"
     artifact_path.write_text(
