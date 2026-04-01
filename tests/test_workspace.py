@@ -122,6 +122,41 @@ def test_merge_registry_entries_prefers_newer_version_on_updated_at_tie() -> Non
     assert merged_reverse[0].arxiv_id == "2501.00003v2"
 
 
+def test_merge_registry_entries_orders_equal_timestamps_deterministically() -> None:
+    alpha = RegistryEntry(
+        arxiv_id="2501.00010v1",
+        title="Alpha paper",
+        summary="alpha",
+        pdf_url="https://arxiv.org/pdf/2501.00010v1",
+        published_at="2026-01-02T00:00:00Z",
+        updated_at="2026-01-06T00:00:00Z",
+        relevance_band="adjacent",
+        source="arxiv",
+    )
+    beta = RegistryEntry(
+        arxiv_id="2501.00011v1",
+        title="Beta paper",
+        summary="beta",
+        pdf_url="https://arxiv.org/pdf/2501.00011v1",
+        published_at="2026-01-02T00:00:00Z",
+        updated_at="2026-01-06T00:00:00Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    merged = merge_registry_entries([beta, alpha], [])
+    merged_reverse = merge_registry_entries([alpha, beta], [])
+
+    assert [entry.stable_id for entry in merged] == [
+        "2501.00010",
+        "2501.00011",
+    ]
+    assert [entry.stable_id for entry in merged_reverse] == [
+        "2501.00010",
+        "2501.00011",
+    ]
+
+
 def test_registry_write_load_round_trip(tmp_path) -> None:
     entry = RegistryEntry(
         arxiv_id="2501.00002v1",

@@ -51,4 +51,7 @@ def merge_registry_entries(
     for entry in incoming:
         consider(entry)
 
-    return sorted(merged.values(), key=lambda item: item.updated_at, reverse=True)
+    ordered = sorted(merged.values(), key=lambda item: item.version_number, reverse=True)
+    ordered = sorted(ordered, key=lambda item: item.stable_id)
+    ordered = sorted(ordered, key=lambda item: item.updated_at, reverse=True)
+    return ordered
