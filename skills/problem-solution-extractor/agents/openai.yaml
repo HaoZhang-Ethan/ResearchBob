@@ -1,0 +1,4 @@
+interface:
+  display_name: "Problem Solution Extractor"
+  short_description: "Write structured paper analysis artifacts"
+  default_prompt: "Use $problem-solution-extractor to analyze this paper's problem and solution."

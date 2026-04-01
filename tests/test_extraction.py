@@ -1,0 +1,30 @@
+from pathlib import Path
+
+from auto_research.extraction import parse_extraction_document, validate_extraction_document
+
+
+FIXTURE_PATH = Path("tests/fixtures/problem_solution.md")
+
+
+def test_parse_extraction_document_reads_frontmatter() -> None:
+    parsed = parse_extraction_document(FIXTURE_PATH.read_text(encoding="utf-8"))
+
+    assert parsed["paper_id"] == "2501.00001v1"
+    assert parsed["confidence"] == "high"
+    assert parsed["opportunity_label"] == "follow-up"
+
+
+def test_validate_extraction_document_rejects_missing_sections() -> None:
+    errors = validate_extraction_document(
+        "---\n"
+        'paper_id: "2501.00001v1"\n'
+        'title: "Paper"\n'
+        'confidence: "high"\n'
+        'relevance_band: "high-match"\n'
+        'opportunity_label: "read-now"\n'
+        "---\n\n"
+        "# One-Sentence Summary\ntext\n"
+    )
+
+    assert "Missing heading: Problem" in errors
+    assert "Missing heading: Proposed Solution" in errors
