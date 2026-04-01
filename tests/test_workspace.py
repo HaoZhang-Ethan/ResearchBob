@@ -96,6 +96,27 @@ def test_init_workspace_cli_rejects_symlinked_ancestor_path(tmp_path, capsys) ->
     assert "symlink" in captured.err.lower()
 
 
+def test_load_registry_rejects_symlinked_parent_directory(tmp_path) -> None:
+    real_dir = tmp_path / "real-registry"
+    real_dir.mkdir(parents=True, exist_ok=True)
+    symlink_dir = tmp_path / "registry-link"
+    os.symlink(real_dir, symlink_dir)
+    (real_dir / "registry.jsonl").write_text("", encoding="utf-8")
+
+    with pytest.raises(OSError, match="symlink"):
+        load_registry(symlink_dir / "registry.jsonl")
+
+
+def test_write_registry_rejects_symlinked_parent_directory(tmp_path) -> None:
+    real_dir = tmp_path / "real-registry"
+    real_dir.mkdir(parents=True, exist_ok=True)
+    symlink_dir = tmp_path / "registry-link"
+    os.symlink(real_dir, symlink_dir)
+
+    with pytest.raises(OSError, match="symlink"):
+        write_registry(symlink_dir / "registry.jsonl", [])
+
+
 def test_registry_entry_stable_id_handles_slash_ids() -> None:
     entry = RegistryEntry(
         arxiv_id="solv-int/9901001v2",

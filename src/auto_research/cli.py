@@ -68,6 +68,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "validate-profile":
         profile_path = Path(args.path)
+        if profile_path.is_symlink():
+            print(f"Profile path is a symlink: {args.path}", file=sys.stderr)
+            return 1
         if not profile_path.exists():
             print(f"Profile path does not exist: {args.path}", file=sys.stderr)
             return 1
@@ -94,6 +97,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             if _profile_path_was_overridden(raw_argv)
             else workspace / "profile" / "interest-profile.md"
         )
+        if profile_path.is_symlink():
+            print(f"Unable to read intake profile: symlinked file: {profile_path}", file=sys.stderr)
+            return 1
         if not profile_path.exists():
             print(f"Unable to read intake profile: {profile_path}", file=sys.stderr)
             return 1

@@ -99,4 +99,6 @@ def parse_interest_profile_text(text: str) -> InterestProfile:
 
 
 def load_interest_profile(path: Path) -> InterestProfile:
+    if path.is_symlink():
+        raise OSError(f"Refusing to read symlinked profile file: {path}")
     return parse_interest_profile_text(path.read_text(encoding="utf-8"))

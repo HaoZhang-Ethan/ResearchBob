@@ -27,7 +27,14 @@ _REQUIRED_FIELDS: tuple[str, ...] = (
 _ALLOWED_RELEVANCE_BANDS = {"high-match", "adjacent", "low-priority"}
 
 
+def _reject_symlinked_parents(path: Path) -> None:
+    for parent in path.parents:
+        if parent.is_symlink():
+            raise OSError(f"Refusing to use registry path with symlinked parent directory: {parent}")
+
+
 def load_registry(path: Path) -> list[RegistryEntry]:
+    _reject_symlinked_parents(path)
     if path.is_symlink():
         raise OSError(f"Refusing to read symlinked registry file: {path}")
     if not path.exists():
@@ -87,6 +94,7 @@ def load_registry(path: Path) -> list[RegistryEntry]:
 
 
 def write_registry(path: Path, entries: list[RegistryEntry]) -> None:
+    _reject_symlinked_parents(path)
     if path.is_symlink():
         raise OSError(f"Refusing to write to symlinked registry file: {path}")
     if path.exists() and not path.is_file():

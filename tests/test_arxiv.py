@@ -105,6 +105,22 @@ def test_validate_profile_rejects_directory(tmp_path, capsys) -> None:
     assert "Profile path is not a file" in captured.err
 
 
+def test_validate_profile_rejects_symlinked_file(tmp_path, capsys) -> None:
+    real_profile = tmp_path / "real-profile.md"
+    real_profile.write_text(
+        Path("tests/fixtures/interest_profile.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    symlink_profile = tmp_path / "profile-link.md"
+    os.symlink(real_profile, symlink_profile)
+
+    result = main(["validate-profile", str(symlink_profile)])
+
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "symlink" in captured.err.lower()
+
+
 def test_validate_profile_handles_read_errors(monkeypatch, tmp_path, capsys) -> None:
     profile_path = tmp_path / "interest_profile.md"
     profile_path.write_text("placeholder", encoding="utf-8")
@@ -181,6 +197,48 @@ def test_intake_cli_handles_missing_default_profile(tmp_path, capsys) -> None:
     assert result == 1
     captured = capsys.readouterr()
     assert "Unable to read intake profile:" in captured.err
+
+
+def test_intake_cli_rejects_symlinked_profile_path(tmp_path, monkeypatch, capsys) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run_intake(workspace: Path, profile_path: Path, max_results: int) -> list[RegistryEntry]:
+        calls.append(
+            {
+                "workspace": workspace,
+                "profile_path": profile_path,
+                "max_results": max_results,
+            }
+        )
+        return []
+
+    monkeypatch.setattr("auto_research.cli.run_intake", fake_run_intake)
+
+    workspace = tmp_path / "research-workspace"
+    real_profile = tmp_path / "real-profile.md"
+    real_profile.write_text(
+        Path("tests/fixtures/interest_profile.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    symlink_profile = tmp_path / "profile-link.md"
+    os.symlink(real_profile, symlink_profile)
+
+    result = main(
+        [
+            "intake",
+            "--workspace",
+            str(workspace),
+            "--profile",
+            str(symlink_profile),
+            "--max-results",
+            "1",
+        ]
+    )
+
+    assert result == 1
+    assert calls == []
+    captured = capsys.readouterr()
+    assert "symlink" in captured.err.lower()
 
 
 def test_intake_cli_handles_malformed_profile(tmp_path, capsys) -> None:
