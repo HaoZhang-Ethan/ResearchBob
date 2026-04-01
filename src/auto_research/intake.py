@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import shutil
 from pathlib import Path
 
 from auto_research.arxiv import ArxivClient
@@ -17,6 +19,48 @@ def build_query_from_profile(profile: InterestProfile) -> str:
 
 def _paper_directory_name(entry: RegistryEntry) -> str:
     return entry.stable_id.replace("/", "_")
+
+
+def _merge_directory_contents(source: Path, destination: Path) -> None:
+    for child in source.iterdir():
+        target = destination / child.name
+        if not target.exists():
+            child.rename(target)
+            continue
+
+        if child.is_dir() and target.is_dir():
+            _merge_directory_contents(child, target)
+            child.rmdir()
+            continue
+
+        if child.is_dir():
+            shutil.rmtree(child)
+            continue
+
+        child.unlink()
+
+    source.rmdir()
+
+
+def _paper_directory(workspace: Path, entry: RegistryEntry) -> Path:
+    papers_root = workspace / "papers"
+    stable_dir = papers_root / _paper_directory_name(entry)
+    legacy_name_pattern = re.compile(rf"^{re.escape(stable_dir.name)}v\d+$")
+
+    legacy_dirs = [
+        path
+        for path in papers_root.iterdir()
+        if path.is_dir() and path.name != stable_dir.name and legacy_name_pattern.fullmatch(path.name)
+    ] if papers_root.exists() else []
+
+    if legacy_dirs and not stable_dir.exists():
+        stable_dir.mkdir(parents=True, exist_ok=True)
+
+    for legacy_dir in legacy_dirs:
+        _merge_directory_contents(legacy_dir, stable_dir)
+
+    stable_dir.mkdir(parents=True, exist_ok=True)
+    return stable_dir
 
 
 def run_intake(workspace: Path, profile_path: Path, max_results: int = 25) -> list[RegistryEntry]:
@@ -51,8 +95,7 @@ def run_intake(workspace: Path, profile_path: Path, max_results: int = 25) -> li
     write_registry(registry_path, merged)
 
     for entry in merged:
-        paper_dir = workspace / "papers" / _paper_directory_name(entry)
-        paper_dir.mkdir(parents=True, exist_ok=True)
+        paper_dir = _paper_directory(workspace, entry)
         metadata_path = paper_dir / "metadata.json"
         metadata_path.write_text(json.dumps(entry.to_dict(), indent=2), encoding="utf-8")
 

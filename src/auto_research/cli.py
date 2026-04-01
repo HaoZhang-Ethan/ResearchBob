@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import argparse
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Sequence
 
+import httpx
+
 from auto_research.intake import run_intake
-from auto_research.profile import validate_interest_profile_text
+from auto_research.profile import parse_interest_profile_text, validate_interest_profile_text
 from auto_research.workspace import ensure_workspace
 
 
@@ -68,16 +71,31 @@ def main(argv: Sequence[str] | None = None) -> int:
             else workspace / "profile" / "interest-profile.md"
         )
         try:
+            profile_text = profile_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"Unable to read intake profile: {exc}", file=sys.stderr)
+            return 1
+
+        try:
+            parse_interest_profile_text(profile_text)
+        except ValueError as exc:
+            print(f"Invalid intake profile: {exc}", file=sys.stderr)
+            return 1
+
+        try:
             entries = run_intake(
                 workspace=workspace,
                 profile_path=profile_path,
                 max_results=args.max_results,
             )
-        except OSError as exc:
-            print(f"Unable to read intake profile: {exc}", file=sys.stderr)
+        except httpx.HTTPError as exc:
+            print(f"Unable to fetch arXiv papers: {exc}", file=sys.stderr)
             return 1
-        except ValueError as exc:
-            print(f"Invalid intake profile: {exc}", file=sys.stderr)
+        except ET.ParseError as exc:
+            print(f"Unable to parse arXiv feed: {exc}", file=sys.stderr)
+            return 1
+        except OSError as exc:
+            print(f"Intake failed: {exc}", file=sys.stderr)
             return 1
         print(f"ingested {len(entries)} papers")
         return 0

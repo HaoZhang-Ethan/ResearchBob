@@ -121,13 +121,19 @@ def test_intake_cli_uses_workspace_relative_default_profile(tmp_path, monkeypatc
     monkeypatch.setattr("auto_research.cli.run_intake", fake_run_intake)
 
     workspace = tmp_path / "custom-workspace"
+    profile_path = workspace / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        Path("tests/fixtures/interest_profile.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
     result = main(["intake", "--workspace", str(workspace), "--max-results", "7"])
 
     assert result == 0
     assert calls == [
         {
             "workspace": workspace,
-            "profile_path": workspace / "profile" / "interest-profile.md",
+            "profile_path": profile_path,
             "max_results": 7,
         }
     ]
@@ -157,6 +163,26 @@ def test_intake_cli_handles_malformed_profile(tmp_path, capsys) -> None:
     assert result == 1
     captured = capsys.readouterr()
     assert "Invalid intake profile:" in captured.err
+
+
+def test_intake_cli_handles_network_failures(tmp_path, monkeypatch, capsys) -> None:
+    workspace = tmp_path / "research-workspace"
+    profile_source = Path("tests/fixtures/interest_profile.md")
+    profile_path = tmp_path / "interest_profile.md"
+    profile_path.write_text(profile_source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    def fake_run_intake(workspace: Path, profile_path: Path, max_results: int) -> list[RegistryEntry]:
+        raise httpx.ConnectError("network down")
+
+    monkeypatch.setattr("auto_research.cli.run_intake", fake_run_intake)
+
+    result = main(
+        ["intake", "--workspace", str(workspace), "--profile", str(profile_path)]
+    )
+
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "Unable to fetch arXiv papers: network down" in captured.err
 
 
 def test_intake_reuses_stable_directory_for_version_updates(tmp_path, monkeypatch) -> None:
@@ -212,6 +238,44 @@ def test_intake_reuses_stable_directory_for_version_updates(tmp_path, monkeypatc
 
     metadata = json.loads((stable_dir / "metadata.json").read_text(encoding="utf-8"))
     assert metadata["arxiv_id"] == entry_v2.arxiv_id
+
+
+def test_intake_migrates_legacy_versioned_directory(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    profile_source = Path("tests/fixtures/interest_profile.md")
+    profile_path = tmp_path / "interest_profile.md"
+    profile_path.write_text(profile_source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    entry_v2 = RegistryEntry(
+        arxiv_id="2501.00001v2",
+        title="Paper v2",
+        summary="summary v2",
+        pdf_url="http://example.org/v2.pdf",
+        published_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-02T00:00:00Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    legacy_dir = workspace / "papers" / "2501.00001v1"
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    (legacy_dir / "problem-solution.md").write_text("legacy artifact", encoding="utf-8")
+
+    def fake_arxiv_client(*args, **kwargs):
+        class FakeClient:
+            def fetch_recent(self, *args: object, **kwargs: object) -> list[RegistryEntry]:
+                return [entry_v2]
+
+        return FakeClient()
+
+    monkeypatch.setattr(intake_module, "ArxivClient", fake_arxiv_client)
+
+    run_intake(workspace, profile_path, max_results=1)
+
+    stable_dir = workspace / "papers" / entry_v2.stable_id.replace("/", "_")
+    assert stable_dir.is_dir()
+    assert (stable_dir / "problem-solution.md").read_text(encoding="utf-8") == "legacy artifact"
+    assert not legacy_dir.exists()
 
 
 def test_intake_keeps_metadata_on_latest_version_after_downgrade_rerun(tmp_path, monkeypatch) -> None:
