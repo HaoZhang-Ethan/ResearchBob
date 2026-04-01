@@ -54,3 +54,33 @@ def test_validate_profile_cli_missing_file(tmp_path, capsys) -> None:
 
     assert exit_code != 0
     assert "Profile path does not exist" in captured.err
+
+
+def test_validate_interest_profile_detects_duplicate_headings() -> None:
+    text = """# Research Interest Profile
+
+## Core Interests
+- topic
+
+## Core Interests
+- topic two
+
+## Soft Boundaries
+- boundary
+
+## Exclusions
+- exclusion
+
+## Current-Phase Bias
+- bias
+
+## Evaluation Heuristics
+- heuristic
+
+## Open Questions
+- question
+"""
+
+    errors = validate_interest_profile_text(text)
+
+    assert errors == ["Duplicate section: Core Interests"]

@@ -37,10 +37,13 @@ def validate_interest_profile_text(text: str) -> list[str]:
     errors: list[str] = []
 
     for section in SECTION_NAMES:
-        match = _section_pattern(section).search(text)
-        if match is None:
+        matches = list(_section_pattern(section).finditer(text))
+        if not matches:
             errors.append(f"Missing section: {section}")
             continue
+        if len(matches) > 1:
+            errors.append(f"Duplicate section: {section}")
+        match = matches[0]
         if not _extract_bullets(match.group("body")):
             errors.append(f"Section has no bullet items: {section}")
 
