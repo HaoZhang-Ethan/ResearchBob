@@ -242,6 +242,35 @@ def test_compose_daily_report_routes_low_priority_artifacts_to_manual_review(
     assert "low-priority relevance" in report_text
 
 
+def test_compose_daily_report_routes_low_confidence_artifacts_to_manual_review(
+    tmp_path,
+) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+    paper_dir = workspace / "papers" / "2501.00001v1"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    (paper_dir / "problem-solution.md").write_text(
+        _valid_artifact_text(
+            paper_id="2501.00001v1",
+            title="Low Confidence Artifact",
+            confidence="low",
+            relevance_band="high-match",
+            opportunity_label="read-now",
+        ),
+        encoding="utf-8",
+    )
+
+    report_text = compose_report(
+        workspace,
+        mode="daily",
+        label="2026-03-31",
+    ).read_text(encoding="utf-8")
+
+    assert "## Top Papers to Read Now\n- None" in report_text
+    manual_review_section = report_text.split("## Papers Requiring Manual Verification", 1)[1]
+    assert "Low Confidence Artifact" in manual_review_section
+    assert "low confidence" in manual_review_section.lower()
+
+
 def test_compose_report_routes_symlinked_primary_artifact_to_manual_review(tmp_path) -> None:
     workspace = ensure_workspace(tmp_path / "research-workspace")
 
@@ -290,6 +319,22 @@ def test_compose_report_routes_symlinked_metadata_to_manual_review(tmp_path) -> 
     assert "Symlinked Metadata Paper" not in follow_up_section
     assert "Symlinked Metadata Paper" in manual_review_section
     assert "symlink" in manual_review_section.lower()
+
+
+def test_compose_report_rejects_symlinked_report_path(tmp_path) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+
+    outside_target = tmp_path / "outside-report.md"
+    outside_target.write_text("do not touch\n", encoding="utf-8")
+
+    report_path = workspace / "reports" / "daily" / "2026-03-31.md"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    os.symlink(outside_target, report_path)
+
+    with pytest.raises(OSError, match="symlink"):
+        compose_report(workspace, mode="daily", label="2026-03-31")
+
+    assert outside_target.read_text(encoding="utf-8") == "do not touch\n"
 
 
 def test_compose_daily_report_routes_identity_mismatches_to_manual_review(

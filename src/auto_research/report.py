@@ -109,6 +109,9 @@ def _manual_review_reason(
     reasons: list[str] = []
     paper_id = frontmatter["paper_id"]
 
+    if frontmatter["confidence"] == "low":
+        reasons.append("Artifact has low confidence extraction")
+
     if frontmatter["relevance_band"] == "low-priority":
         reasons.append("Artifact has low-priority relevance")
 
@@ -228,5 +231,7 @@ def compose_report(workspace: Path, mode: str, label: str) -> Path:
     report_dir = workspace / "reports" / mode
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"{safe_label}.md"
+    if report_path.is_symlink():
+        raise OSError(f"Refusing to overwrite symlinked report file: {report_path}")
     report_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     return report_path

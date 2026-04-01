@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 from subprocess import run
 
 import pytest
@@ -21,6 +22,27 @@ def test_ensure_workspace_creates_phase1_directories(tmp_path) -> None:
     assert (root / "papers").is_dir()
     assert (root / "reports" / "daily").is_dir()
     assert (root / "reports" / "manual").is_dir()
+
+
+def test_ensure_workspace_rejects_symlinked_root(tmp_path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir(parents=True, exist_ok=True)
+    symlink_root = tmp_path / "workspace-link"
+    os.symlink(outside, symlink_root)
+
+    with pytest.raises(OSError, match="symlink"):
+        ensure_workspace(symlink_root)
+
+
+def test_ensure_workspace_rejects_symlinked_phase_directory(tmp_path) -> None:
+    root = tmp_path / "research-workspace"
+    root.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "outside-papers"
+    outside.mkdir(parents=True, exist_ok=True)
+    os.symlink(outside, root / "papers")
+
+    with pytest.raises(OSError, match="symlink"):
+        ensure_workspace(root)
 
 
 def test_registry_entry_stable_id_handles_slash_ids() -> None:
@@ -209,6 +231,31 @@ def test_registry_write_load_round_trip(tmp_path) -> None:
     assert loaded == [entry]
 
 
+def test_write_registry_rejects_symlinked_destination(tmp_path) -> None:
+    outside = tmp_path / "outside-registry.jsonl"
+    outside.write_text("do not touch\n", encoding="utf-8")
+
+    path = tmp_path / "papers" / "registry.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    os.symlink(outside, path)
+
+    entry = RegistryEntry(
+        arxiv_id="2501.00002v1",
+        title="Round trip",
+        summary="serialization test",
+        pdf_url="https://arxiv.org/pdf/2501.00002v1",
+        published_at="2026-02-01T00:00:00Z",
+        updated_at="2026-02-01T00:00:00Z",
+        relevance_band="low-priority",
+        source="arxiv",
+    )
+
+    with pytest.raises(OSError, match="symlink"):
+        write_registry(path, [entry])
+
+    assert outside.read_text(encoding="utf-8") == "do not touch\n"
+
+
 def test_load_registry_raises_typed_error_on_malformed_json(tmp_path) -> None:
     path = tmp_path / "papers" / "registry.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -224,6 +271,30 @@ def test_load_registry_raises_typed_error_on_schema_invalid_row(tmp_path) -> Non
     path.write_text('{"arxiv_id":"2501.00001v1"}\n', encoding="utf-8")
 
     with pytest.raises(RegistryCorruptionError, match="missing"):
+        load_registry(path)
+
+
+def test_load_registry_raises_typed_error_on_invalid_arxiv_id(tmp_path) -> None:
+    path = tmp_path / "papers" / "registry.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "arxiv_id": "..",
+                "title": "Bad ID",
+                "summary": "bad id",
+                "pdf_url": "https://arxiv.org/pdf/2501.00001v1",
+                "published_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "relevance_band": "adjacent",
+                "source": "arxiv",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RegistryCorruptionError, match="arxiv_id"):
         load_registry(path)
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from auto_research.models import RegistryEntry
+from auto_research.models import RegistryEntry, validate_arxiv_id
 
 
 class RegistryCorruptionError(RuntimeError):
@@ -62,6 +62,11 @@ def load_registry(path: Path) -> list[RegistryEntry]:
                 f"invalid field types (expected strings): {', '.join(sorted(non_string_fields))}",
             )
 
+        try:
+            payload["arxiv_id"] = validate_arxiv_id(payload["arxiv_id"])
+        except ValueError as exc:
+            raise RegistryCorruptionError(path, line_number, "invalid arxiv_id") from exc
+
         relevance_band = payload.get("relevance_band")
         if relevance_band not in _ALLOWED_RELEVANCE_BANDS:
             raise RegistryCorruptionError(
@@ -72,12 +77,14 @@ def load_registry(path: Path) -> list[RegistryEntry]:
 
         try:
             entries.append(RegistryEntry(**payload))
-        except TypeError as exc:
+        except (TypeError, ValueError) as exc:
             raise RegistryCorruptionError(path, line_number, f"schema mismatch: {exc}") from exc
     return entries
 
 
 def write_registry(path: Path, entries: list[RegistryEntry]) -> None:
+    if path.is_symlink():
+        raise OSError(f"Refusing to write to symlinked registry file: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = "\n".join(json.dumps(entry.to_dict(), sort_keys=True) for entry in entries)
     path.write_text(f"{payload}\n" if payload else "", encoding="utf-8")

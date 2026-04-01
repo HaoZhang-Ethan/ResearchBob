@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 
 import httpx
 
-from auto_research.models import RegistryEntry
+from auto_research.models import RegistryEntry, validate_arxiv_id
 
 ATOM_NAMESPACE = {"atom": "http://www.w3.org/2005/Atom"}
 
@@ -42,6 +42,7 @@ class ArxivClient:
             raw_id = _extract_arxiv_id(
                 entry.findtext("atom:id", default="", namespaces=ATOM_NAMESPACE)
             )
+            raw_id = validate_arxiv_id(raw_id)
             title = " ".join(entry.findtext("atom:title", default="", namespaces=ATOM_NAMESPACE).split())
             summary = " ".join(entry.findtext("atom:summary", default="", namespaces=ATOM_NAMESPACE).split())
             published_at = entry.findtext("atom:published", default="", namespaces=ATOM_NAMESPACE)

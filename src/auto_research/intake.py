@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from auto_research.arxiv import ArxivClient
-from auto_research.models import InterestProfile, RegistryEntry
+from auto_research.models import InterestProfile, RegistryEntry, validate_arxiv_id
 from auto_research.profile import load_interest_profile
 from auto_research.registry import load_registry, merge_registry_entries, write_registry
 from auto_research.workspace import ensure_workspace
@@ -103,6 +103,7 @@ def run_intake(workspace: Path, profile_path: Path, max_results: int = 25) -> li
 
     normalized: list[RegistryEntry] = []
     for entry in incoming:
+        safe_arxiv_id = validate_arxiv_id(entry.arxiv_id)
         relevance_band = "high-match"
         if any(term.lower() in entry.summary.lower() for term in profile.soft_boundaries):
             relevance_band = "adjacent"
@@ -111,7 +112,7 @@ def run_intake(workspace: Path, profile_path: Path, max_results: int = 25) -> li
 
         normalized.append(
             RegistryEntry(
-                arxiv_id=entry.arxiv_id,
+                arxiv_id=safe_arxiv_id,
                 title=entry.title,
                 summary=entry.summary,
                 pdf_url=entry.pdf_url,
@@ -127,6 +128,7 @@ def run_intake(workspace: Path, profile_path: Path, max_results: int = 25) -> li
 
     prepared: list[tuple[RegistryEntry, Path]] = []
     for entry in merged:
+        validate_arxiv_id(entry.arxiv_id)
         paper_dir = _paper_directory(workspace, entry)
         metadata_path = paper_dir / "metadata.json"
         _refuse_symlink_child(metadata_path, label="metadata file")

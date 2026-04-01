@@ -609,6 +609,42 @@ def test_run_intake_rejects_symlinked_metadata_child_without_touching_target(
     assert outside_target.read_text(encoding="utf-8") == '{"do_not_touch": true}\n'
 
 
+def test_run_intake_rejects_invalid_arxiv_id_before_path_derivation(
+    tmp_path, monkeypatch
+) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+    profile_path = workspace / "profile" / "interest-profile.md"
+    profile_path.write_text(
+        Path("tests/fixtures/interest_profile.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    invalid_entry = RegistryEntry(
+        arxiv_id="..",
+        title="Bad id",
+        summary="invalid id should be rejected",
+        pdf_url="http://example.org/bad.pdf",
+        published_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        relevance_band="adjacent",
+        source="arxiv",
+    )
+
+    def fake_arxiv_client(*args, **kwargs):
+        class FakeClient:
+            def fetch_recent(self, *args: object, **kwargs: object) -> list[RegistryEntry]:
+                return [invalid_entry]
+
+        return FakeClient()
+
+    monkeypatch.setattr(intake_module, "ArxivClient", fake_arxiv_client)
+
+    with pytest.raises(ValueError, match="arxiv"):
+        run_intake(workspace, profile_path, max_results=1)
+
+    assert not (workspace / "metadata.json").exists()
+
+
 def test_run_intake_does_not_persist_registry_when_paper_directory_validation_fails(
     tmp_path, monkeypatch
 ) -> None:
