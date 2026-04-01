@@ -84,3 +84,61 @@ def test_validate_interest_profile_detects_duplicate_headings() -> None:
     errors = validate_interest_profile_text(text)
 
     assert errors == ["Duplicate section: Core Interests"]
+
+
+def test_validate_interest_profile_rejects_unexpected_headings() -> None:
+    text = """# Research Interest Profile
+
+## Core Interests
+- topic
+
+## Soft Boundaries
+- boundary
+
+## Exclusions
+- exclusion
+
+## Current-Phase Bias
+- bias
+
+## Evaluation Heuristics
+- heuristic
+
+## Open Questions
+- question
+
+## Notes
+- stray heading
+"""
+
+    errors = validate_interest_profile_text(text)
+
+    assert errors == ["Unexpected section: Notes"]
+
+
+def test_validate_interest_profile_rejects_stray_prose_in_section() -> None:
+    text = """# Research Interest Profile
+
+## Core Interests
+- topic
+This line should not be here.
+
+## Soft Boundaries
+- boundary
+
+## Exclusions
+- exclusion
+
+## Current-Phase Bias
+- bias
+
+## Evaluation Heuristics
+- heuristic
+
+## Open Questions
+- question
+"""
+
+    errors = validate_interest_profile_text(text)
+
+    assert errors == ["Section contains non-bullet content: Core Interests"]

@@ -13,6 +13,11 @@ SECTION_NAMES = (
     "Evaluation Heuristics",
     "Open Questions",
 )
+SECTION_NAME_SET = set(SECTION_NAMES)
+
+
+def _heading_pattern() -> re.Pattern[str]:
+    return re.compile(r"^## (?P<name>.+)$", re.MULTILINE)
 
 
 def _section_pattern(name: str) -> re.Pattern[str]:
@@ -33,8 +38,21 @@ def _extract_bullets(body: str) -> list[str]:
     return bullets
 
 
+def _has_non_bullet_content(body: str) -> bool:
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped and not line.startswith("- "):
+            return True
+    return False
+
+
 def validate_interest_profile_text(text: str) -> list[str]:
     errors: list[str] = []
+
+    for heading in _heading_pattern().finditer(text):
+        name = heading.group("name")
+        if name not in SECTION_NAME_SET:
+            errors.append(f"Unexpected section: {name}")
 
     for section in SECTION_NAMES:
         matches = list(_section_pattern(section).finditer(text))
@@ -44,6 +62,8 @@ def validate_interest_profile_text(text: str) -> list[str]:
         if len(matches) > 1:
             errors.append(f"Duplicate section: {section}")
         match = matches[0]
+        if _has_non_bullet_content(match.group("body")):
+            errors.append(f"Section contains non-bullet content: {section}")
         if not _extract_bullets(match.group("body")):
             errors.append(f"Section has no bullet items: {section}")
 
