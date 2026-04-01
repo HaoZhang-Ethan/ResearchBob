@@ -22,7 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     intake = subparsers.add_parser("intake")
     intake.add_argument("--workspace", default="research-workspace")
-    intake.add_argument("--profile", default="research-workspace/profile/interest-profile.md")
+    intake.add_argument("--profile")
     intake.add_argument("--max-results", type=int, default=25)
 
     subparsers.add_parser("validate-extraction")
@@ -57,9 +57,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if args.command == "intake":
+        workspace = Path(args.workspace)
+        profile_path = (
+            Path(args.profile)
+            if args.profile is not None
+            else workspace / "profile" / "interest-profile.md"
+        )
         entries = run_intake(
-            workspace=Path(args.workspace),
-            profile_path=Path(args.profile),
+            workspace=workspace,
+            profile_path=profile_path,
             max_results=args.max_results,
         )
         print(f"ingested {len(entries)} papers")

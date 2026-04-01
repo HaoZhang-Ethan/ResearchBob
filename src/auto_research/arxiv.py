@@ -9,6 +9,12 @@ from auto_research.models import RegistryEntry
 ATOM_NAMESPACE = {"atom": "http://www.w3.org/2005/Atom"}
 
 
+def _extract_arxiv_id(raw_id_url: str) -> str:
+    if "/abs/" in raw_id_url:
+        return raw_id_url.split("/abs/", 1)[1]
+    return raw_id_url.rsplit("/", 1)[-1]
+
+
 class ArxivClient:
     def __init__(self, client: httpx.Client | None = None, endpoint: str | None = None) -> None:
         self._client = client or httpx.Client(timeout=30.0)
@@ -27,7 +33,9 @@ class ArxivClient:
         entries: list[RegistryEntry] = []
 
         for entry in root.findall("atom:entry", ATOM_NAMESPACE):
-            raw_id = entry.findtext("atom:id", default="", namespaces=ATOM_NAMESPACE).rsplit("/", 1)[-1]
+            raw_id = _extract_arxiv_id(
+                entry.findtext("atom:id", default="", namespaces=ATOM_NAMESPACE)
+            )
             title = " ".join(entry.findtext("atom:title", default="", namespaces=ATOM_NAMESPACE).split())
             summary = " ".join(entry.findtext("atom:summary", default="", namespaces=ATOM_NAMESPACE).split())
             published_at = entry.findtext("atom:published", default="", namespaces=ATOM_NAMESPACE)

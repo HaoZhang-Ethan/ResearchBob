@@ -50,7 +50,7 @@ def run_intake(workspace: Path, profile_path: Path, max_results: int = 25) -> li
     merged = merge_registry_entries(load_registry(registry_path), normalized)
     write_registry(registry_path, merged)
 
-    for entry in normalized:
+    for entry in merged:
         paper_dir = workspace / "papers" / _paper_directory_name(entry)
         paper_dir.mkdir(parents=True, exist_ok=True)
         metadata_path = paper_dir / "metadata.json"
