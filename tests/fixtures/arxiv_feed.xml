@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2501.00001v1</id>
+    <updated>2026-01-03T00:00:00Z</updated>
+    <published>2026-01-01T00:00:00Z</published>
+    <title>Efficient Tail Latency Control for Serving Clusters</title>
+    <summary>We study tail latency in serving clusters and propose a queue-aware scheduler.</summary>
+    <link title="pdf" href="http://arxiv.org/pdf/2501.00001v1"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2501.00002v1</id>
+    <updated>2026-01-02T00:00:00Z</updated>
+    <published>2026-01-02T00:00:00Z</published>
+    <title>Inference Scheduling Under Heterogeneous Accelerators</title>
+    <summary>We examine scheduling policies for mixed GPU and accelerator fleets.</summary>
+    <link title="pdf" href="http://arxiv.org/pdf/2501.00002v1"/>
+  </entry>
+</feed>

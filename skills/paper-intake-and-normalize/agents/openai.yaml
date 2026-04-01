@@ -1,0 +1,4 @@
+interface:
+  display_name: "Paper Intake and Normalize"
+  short_description: "Fetch and normalize arXiv candidates"
+  default_prompt: "Use $paper-intake-and-normalize to fetch the latest arXiv papers for my active profile."
