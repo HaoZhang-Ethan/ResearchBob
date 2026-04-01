@@ -23,7 +23,13 @@ class ArxivClient:
     def fetch_recent(self, query: str, max_results: int = 25) -> list[RegistryEntry]:
         response = self._client.get(
             self._endpoint,
-            params={"search_query": query, "start": 0, "max_results": max_results},
+            params={
+                "search_query": query,
+                "start": 0,
+                "max_results": max_results,
+                "sortBy": "submittedDate",
+                "sortOrder": "descending",
+            },
         )
         response.raise_for_status()
         return self._parse_feed(response.text)

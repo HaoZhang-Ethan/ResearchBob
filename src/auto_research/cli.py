@@ -47,7 +47,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not profile_path.is_file():
             print(f"Profile path is not a file: {args.path}", file=sys.stderr)
             return 1
-        text = profile_path.read_text(encoding="utf-8")
+        try:
+            text = profile_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"Unable to read profile: {exc}", file=sys.stderr)
+            return 1
         errors = validate_interest_profile_text(text)
         if errors:
             for error in errors:
@@ -63,11 +67,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.profile is not None
             else workspace / "profile" / "interest-profile.md"
         )
-        entries = run_intake(
-            workspace=workspace,
-            profile_path=profile_path,
-            max_results=args.max_results,
-        )
+        try:
+            entries = run_intake(
+                workspace=workspace,
+                profile_path=profile_path,
+                max_results=args.max_results,
+            )
+        except OSError as exc:
+            print(f"Unable to read intake profile: {exc}", file=sys.stderr)
+            return 1
         print(f"ingested {len(entries)} papers")
         return 0
 

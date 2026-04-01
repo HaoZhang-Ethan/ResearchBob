@@ -35,6 +35,22 @@ def test_arxiv_client_parses_atom_feed() -> None:
     assert entries[0].relevance_band == "adjacent"
 
 
+def test_arxiv_client_requests_submitted_date_sorting() -> None:
+    seen_params: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_params.update(dict(request.url.params))
+        return httpx.Response(200, text=FIXTURE_XML)
+
+    transport = httpx.MockTransport(handler)
+    client = ArxivClient(httpx.Client(transport=transport), "https://example.test/api/query")
+
+    client.fetch_recent("distributed systems", max_results=2)
+
+    assert seen_params["sortBy"] == "submittedDate"
+    assert seen_params["sortOrder"] == "descending"
+
+
 def test_arxiv_client_parses_legacy_slash_style_id() -> None:
     xml_text = """<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
@@ -69,6 +85,26 @@ def test_validate_profile_rejects_directory(tmp_path, capsys) -> None:
     assert "Profile path is not a file" in captured.err
 
 
+def test_validate_profile_handles_read_errors(monkeypatch, tmp_path, capsys) -> None:
+    profile_path = tmp_path / "interest_profile.md"
+    profile_path.write_text("placeholder", encoding="utf-8")
+
+    original_read_text = Path.read_text
+
+    def patched_read_text(self: Path, encoding: str = "utf-8", errors: str | None = None) -> str:
+        if self == profile_path:
+            raise OSError("boom")
+        return original_read_text(self, encoding=encoding, errors=errors)
+
+    monkeypatch.setattr(Path, "read_text", patched_read_text)
+
+    result = main(["validate-profile", str(profile_path)])
+
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "Unable to read profile: boom" in captured.err
+
+
 def test_intake_cli_uses_workspace_relative_default_profile(tmp_path, monkeypatch, capsys) -> None:
     calls: list[dict[str, object]] = []
 
@@ -97,6 +133,16 @@ def test_intake_cli_uses_workspace_relative_default_profile(tmp_path, monkeypatc
     ]
     captured = capsys.readouterr()
     assert "ingested 0 papers" in captured.out
+
+
+def test_intake_cli_handles_missing_default_profile(tmp_path, capsys) -> None:
+    workspace = tmp_path / "fresh-workspace"
+
+    result = main(["intake", "--workspace", str(workspace)])
+
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "Unable to read intake profile:" in captured.err
 
 
 def test_intake_reuses_stable_directory_for_version_updates(tmp_path, monkeypatch) -> None:
