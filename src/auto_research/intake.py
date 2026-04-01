@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 from pathlib import Path
 
 from auto_research.arxiv import ArxivClient
@@ -21,8 +20,24 @@ def _paper_directory_name(entry: RegistryEntry) -> str:
     return entry.stable_id.replace("/", "_")
 
 
+def _migration_conflict_target(destination: Path, child_name: str, source_name: str) -> Path:
+    child_path = Path(child_name)
+    suffix = child_path.suffix
+    stem = child_name[: -len(suffix)] if suffix else child_name
+    candidate_name = f"{stem}.migrated-from-{source_name}{suffix}"
+    candidate = destination / candidate_name
+    counter = 2
+
+    while candidate.exists():
+        candidate_name = f"{stem}.migrated-from-{source_name}-{counter}{suffix}"
+        candidate = destination / candidate_name
+        counter += 1
+
+    return candidate
+
+
 def _merge_directory_contents(source: Path, destination: Path) -> None:
-    for child in source.iterdir():
+    for child in list(source.iterdir()):
         target = destination / child.name
         if not target.exists():
             child.rename(target)
@@ -30,14 +45,9 @@ def _merge_directory_contents(source: Path, destination: Path) -> None:
 
         if child.is_dir() and target.is_dir():
             _merge_directory_contents(child, target)
-            child.rmdir()
             continue
 
-        if child.is_dir():
-            shutil.rmtree(child)
-            continue
-
-        child.unlink()
+        child.rename(_migration_conflict_target(destination, child.name, source.name))
 
     source.rmdir()
 
@@ -99,4 +109,5 @@ def run_intake(workspace: Path, profile_path: Path, max_results: int = 25) -> li
         metadata_path = paper_dir / "metadata.json"
         metadata_path.write_text(json.dumps(entry.to_dict(), indent=2), encoding="utf-8")
 
-    return normalized
+    touched_stable_ids = {entry.stable_id for entry in normalized}
+    return [entry for entry in merged if entry.stable_id in touched_stable_ids]

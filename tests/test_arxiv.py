@@ -185,6 +185,53 @@ def test_intake_cli_handles_network_failures(tmp_path, monkeypatch, capsys) -> N
     assert "Unable to fetch arXiv papers: network down" in captured.err
 
 
+def test_intake_deduplicates_multiple_versions_in_single_fetch(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    profile_source = Path("tests/fixtures/interest_profile.md")
+    profile_path = tmp_path / "interest_profile.md"
+    profile_path.write_text(profile_source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    entry_v1 = RegistryEntry(
+        arxiv_id="2501.00001v1",
+        title="Paper v1",
+        summary="summary v1",
+        pdf_url="http://example.org/v1.pdf",
+        published_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        relevance_band="adjacent",
+        source="arxiv",
+    )
+    entry_v2 = RegistryEntry(
+        arxiv_id="2501.00001v2",
+        title="Paper v2",
+        summary="summary v2",
+        pdf_url="http://example.org/v2.pdf",
+        published_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-02T00:00:00Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    def fake_arxiv_client(*args, **kwargs):
+        class FakeClient:
+            def fetch_recent(self, *args: object, **kwargs: object) -> list[RegistryEntry]:
+                return [entry_v1, entry_v2]
+
+        return FakeClient()
+
+    monkeypatch.setattr(intake_module, "ArxivClient", fake_arxiv_client)
+
+    entries = run_intake(workspace, profile_path, max_results=2)
+
+    assert [entry.arxiv_id for entry in entries] == [entry_v2.arxiv_id]
+    registry_rows = [
+        json.loads(line)
+        for line in (workspace / "papers" / "registry.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [row["arxiv_id"] for row in registry_rows] == [entry_v2.arxiv_id]
+
+
 def test_intake_reuses_stable_directory_for_version_updates(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
     profile_source = Path("tests/fixtures/interest_profile.md")
@@ -275,6 +322,48 @@ def test_intake_migrates_legacy_versioned_directory(tmp_path, monkeypatch) -> No
     stable_dir = workspace / "papers" / entry_v2.stable_id.replace("/", "_")
     assert stable_dir.is_dir()
     assert (stable_dir / "problem-solution.md").read_text(encoding="utf-8") == "legacy artifact"
+    assert not legacy_dir.exists()
+
+
+def test_intake_preserves_conflicting_legacy_files_during_migration(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    profile_source = Path("tests/fixtures/interest_profile.md")
+    profile_path = tmp_path / "interest_profile.md"
+    profile_path.write_text(profile_source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    entry_v2 = RegistryEntry(
+        arxiv_id="2501.00001v2",
+        title="Paper v2",
+        summary="summary v2",
+        pdf_url="http://example.org/v2.pdf",
+        published_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-02T00:00:00Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    stable_dir = workspace / "papers" / "2501.00001"
+    stable_dir.mkdir(parents=True, exist_ok=True)
+    (stable_dir / "problem-solution.md").write_text("stable artifact", encoding="utf-8")
+
+    legacy_dir = workspace / "papers" / "2501.00001v1"
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    (legacy_dir / "problem-solution.md").write_text("legacy artifact", encoding="utf-8")
+
+    def fake_arxiv_client(*args, **kwargs):
+        class FakeClient:
+            def fetch_recent(self, *args: object, **kwargs: object) -> list[RegistryEntry]:
+                return [entry_v2]
+
+        return FakeClient()
+
+    monkeypatch.setattr(intake_module, "ArxivClient", fake_arxiv_client)
+
+    run_intake(workspace, profile_path, max_results=1)
+
+    migrated_conflict = stable_dir / "problem-solution.migrated-from-2501.00001v1.md"
+    assert (stable_dir / "problem-solution.md").read_text(encoding="utf-8") == "stable artifact"
+    assert migrated_conflict.read_text(encoding="utf-8") == "legacy artifact"
     assert not legacy_dir.exists()
 
 
