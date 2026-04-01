@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Sequence
 
@@ -33,7 +34,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if args.command == "validate-profile":
-        text = Path(args.path).read_text(encoding="utf-8")
+        path = Path(args.path)
+        if not path.is_file():
+            print(f"Profile path does not exist: {path}", file=sys.stderr)
+            return 1
+
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"Unable to read profile: {exc}", file=sys.stderr)
+            return 1
+
         errors = validate_interest_profile_text(text)
         if errors:
             for error in errors:

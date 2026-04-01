@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from auto_research.cli import main as cli_main
 from auto_research.profile import load_interest_profile, validate_interest_profile_text
 
 
@@ -43,3 +44,13 @@ def test_validate_interest_profile_rejects_template_placeholders() -> None:
         "Section has no bullet items: Evaluation Heuristics",
         "Section has no bullet items: Open Questions",
     ]
+
+
+def test_validate_profile_cli_missing_file(tmp_path, capsys) -> None:
+    missing = tmp_path / "interest-profile.md"
+
+    exit_code = cli_main(["validate-profile", str(missing)])
+    captured = capsys.readouterr()
+
+    assert exit_code != 0
+    assert "Profile path does not exist" in captured.err
