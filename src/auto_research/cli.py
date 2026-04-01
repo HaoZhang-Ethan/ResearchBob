@@ -11,6 +11,7 @@ import httpx
 from auto_research.extraction import validate_extraction_document
 from auto_research.intake import run_intake
 from auto_research.profile import validate_interest_profile_text
+from auto_research.registry import RegistryCorruptionError
 from auto_research.report import compose_report
 from auto_research.workspace import ensure_workspace
 
@@ -101,6 +102,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 profile_path=profile_path,
                 max_results=args.max_results,
             )
+        except RegistryCorruptionError as exc:
+            print(f"Registry is corrupted: {exc}", file=sys.stderr)
+            return 1
         except OSError as exc:
             print(f"Intake failed: {exc}", file=sys.stderr)
             return 1

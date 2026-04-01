@@ -1,3 +1,4 @@
+import os
 import json
 
 from pathlib import Path
@@ -77,6 +78,35 @@ def test_compose_daily_report_groups_entries_by_opportunity(tmp_path) -> None:
     assert "Efficient Tail Latency Control for Serving Clusters" in report_text
 
 
+def test_compose_daily_report_keeps_versioned_directories_out_of_manual_review(
+    tmp_path,
+) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+
+    paper_dir = workspace / "papers" / "2501.00001v1"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    (paper_dir / "problem-solution.md").write_text(
+        _valid_artifact_text(
+            paper_id="2501.00001v1",
+            title="Efficient Tail Latency Control for Serving Clusters",
+            opportunity_label="follow-up",
+        ),
+        encoding="utf-8",
+    )
+
+    report_text = compose_report(workspace, mode="daily", label="2026-03-31").read_text(
+        encoding="utf-8"
+    )
+
+    follow_up_section = report_text.split("## Promising Problems, Weak Solutions", 1)[1].split(
+        "## Papers Likely Safe to Skip", 1
+    )[0]
+    manual_review_section = report_text.split("## Papers Requiring Manual Verification", 1)[1]
+
+    assert "Efficient Tail Latency Control for Serving Clusters" in follow_up_section
+    assert "Efficient Tail Latency Control for Serving Clusters" not in manual_review_section
+
+
 def test_compose_daily_report_routes_invalid_artifacts_to_manual_review(
     tmp_path,
 ) -> None:
@@ -127,6 +157,30 @@ def test_compose_daily_report_routes_invalid_artifacts_to_manual_review(
     assert "Do Not Trust This Title" not in report_text
     assert "Missing heading: Problem" in report_text
     assert "Missing YAML frontmatter" in report_text
+
+
+def test_compose_report_ignores_symlinked_paper_directories(tmp_path) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+
+    outside_dir = tmp_path / "outside-paper"
+    outside_dir.mkdir(parents=True, exist_ok=True)
+    (outside_dir / "problem-solution.md").write_text(
+        _valid_artifact_text(
+            paper_id="2501.99999v1",
+            title="Outside Workspace Paper",
+            opportunity_label="read-now",
+        ),
+        encoding="utf-8",
+    )
+
+    symlink_dir = workspace / "papers" / "2501.99999v1"
+    os.symlink(outside_dir, symlink_dir)
+
+    report_text = compose_report(workspace, mode="daily", label="2026-03-31").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Outside Workspace Paper" not in report_text
 
 
 def test_compose_daily_report_surfaces_migrated_conflict_artifacts(tmp_path) -> None:

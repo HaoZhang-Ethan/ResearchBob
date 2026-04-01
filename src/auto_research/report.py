@@ -29,7 +29,10 @@ METADATA_NAME = "metadata.json"
 
 def _paper_directories(workspace: Path) -> list[Path]:
     papers_root = workspace / "papers"
-    return sorted((path for path in papers_root.iterdir() if path.is_dir()), key=lambda path: path.name)
+    return sorted(
+        (path for path in papers_root.iterdir() if path.is_dir() and not path.is_symlink()),
+        key=lambda path: path.name,
+    )
 
 
 def _validate_report_label(label: str) -> str:
@@ -71,6 +74,13 @@ def _expected_directory_name(paper_id: str) -> str:
     return _stable_paper_id(paper_id).replace("/", "_")
 
 
+def _expected_directory_names(paper_id: str) -> set[str]:
+    return {
+        _stable_paper_id(paper_id).replace("/", "_"),
+        paper_id.replace("/", "_"),
+    }
+
+
 def _load_metadata_arxiv_id(paper_dir: Path) -> tuple[str | None, str | None]:
     metadata_path = paper_dir / METADATA_NAME
     if not metadata_path.exists():
@@ -100,7 +110,8 @@ def _manual_review_reason(
     if frontmatter["relevance_band"] == "low-priority":
         reasons.append("Artifact has low-priority relevance")
 
-    if _expected_directory_name(paper_id) != paper_dir.name:
+    expected_names = _expected_directory_names(paper_id)
+    if paper_dir.name not in expected_names:
         reasons.append(
             f'Artifact paper_id "{paper_id}" does not match containing directory "{paper_dir.name}"'
         )

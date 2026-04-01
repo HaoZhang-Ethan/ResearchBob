@@ -1,7 +1,9 @@
+import os
 from pathlib import Path
 
 import httpx
 import json
+import pytest
 
 from auto_research import intake as intake_module
 from auto_research.arxiv import ArxivClient
@@ -9,6 +11,7 @@ from auto_research.cli import main
 from auto_research.intake import build_query_from_profile, run_intake
 from auto_research.models import RegistryEntry
 from auto_research.profile import load_interest_profile
+from auto_research.workspace import ensure_workspace
 
 
 FIXTURE_XML = Path("tests/fixtures/arxiv_feed.xml").read_text(encoding="utf-8")
@@ -447,3 +450,117 @@ def test_intake_keeps_metadata_on_latest_version_after_downgrade_rerun(tmp_path,
 
     assert metadata["arxiv_id"] == entry_v2.arxiv_id
     assert [row["arxiv_id"] for row in registry_rows] == [entry_v2.arxiv_id]
+
+
+def test_run_intake_rejects_symlinked_stable_paper_directory(tmp_path, monkeypatch) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+    profile_path = workspace / "profile" / "interest-profile.md"
+    profile_path.write_text(
+        Path("tests/fixtures/interest_profile.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir(parents=True, exist_ok=True)
+
+    stable_dir = workspace / "papers" / "2501.00001"
+    os.symlink(outside_dir, stable_dir)
+
+    entry = RegistryEntry(
+        arxiv_id="2501.00001v1",
+        title="Paper v1",
+        summary="summary v1",
+        pdf_url="http://example.org/v1.pdf",
+        published_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        relevance_band="adjacent",
+        source="arxiv",
+    )
+
+    def fake_arxiv_client(*args, **kwargs):
+        class FakeClient:
+            def fetch_recent(self, *args: object, **kwargs: object) -> list[RegistryEntry]:
+                return [entry]
+
+        return FakeClient()
+
+    monkeypatch.setattr(intake_module, "ArxivClient", fake_arxiv_client)
+
+    with pytest.raises(OSError, match="symlink"):
+        run_intake(workspace, profile_path, max_results=1)
+
+    assert not (outside_dir / "metadata.json").exists()
+
+
+def test_run_intake_ignores_symlinked_legacy_paper_directory(tmp_path, monkeypatch) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+    profile_path = workspace / "profile" / "interest-profile.md"
+    profile_path.write_text(
+        Path("tests/fixtures/interest_profile.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    outside_dir = tmp_path / "outside-legacy"
+    outside_dir.mkdir(parents=True, exist_ok=True)
+    (outside_dir / "outside.txt").write_text("do not migrate", encoding="utf-8")
+
+    legacy_dir = workspace / "papers" / "2501.00001v1"
+    os.symlink(outside_dir, legacy_dir)
+
+    entry = RegistryEntry(
+        arxiv_id="2501.00001v2",
+        title="Paper v2",
+        summary="summary v2",
+        pdf_url="http://example.org/v2.pdf",
+        published_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-02T00:00:00Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    def fake_arxiv_client(*args, **kwargs):
+        class FakeClient:
+            def fetch_recent(self, *args: object, **kwargs: object) -> list[RegistryEntry]:
+                return [entry]
+
+        return FakeClient()
+
+    monkeypatch.setattr(intake_module, "ArxivClient", fake_arxiv_client)
+
+    run_intake(workspace, profile_path, max_results=1)
+
+    stable_dir = workspace / "papers" / "2501.00001"
+    assert stable_dir.is_dir()
+    assert not stable_dir.is_symlink()
+    assert (outside_dir / "outside.txt").exists()
+    assert not (stable_dir / "outside.txt").exists()
+
+
+def test_intake_cli_reports_corrupt_registry_instead_of_profile_error(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+    profile_path = workspace / "profile" / "interest-profile.md"
+    profile_path.write_text(
+        Path("tests/fixtures/interest_profile.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    registry_path = workspace / "papers" / "registry.jsonl"
+    registry_path.write_text("not json\n", encoding="utf-8")
+
+    def fake_arxiv_client(*args, **kwargs):
+        class FakeClient:
+            def fetch_recent(self, *args: object, **kwargs: object) -> list[RegistryEntry]:
+                return []
+
+        return FakeClient()
+
+    monkeypatch.setattr(intake_module, "ArxivClient", fake_arxiv_client)
+
+    result = main(["intake", "--workspace", str(workspace), "--max-results", "1"])
+
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "registry" in captured.err.lower()
+    assert "Invalid intake profile" not in captured.err

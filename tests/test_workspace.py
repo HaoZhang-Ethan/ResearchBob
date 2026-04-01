@@ -2,10 +2,13 @@ import os
 import sys
 from subprocess import run
 
+import pytest
+
 from auto_research.models import RegistryEntry
 from auto_research.registry import (
     load_registry,
     merge_registry_entries,
+    RegistryCorruptionError,
     write_registry,
 )
 from auto_research.workspace import ensure_workspace
@@ -204,6 +207,24 @@ def test_registry_write_load_round_trip(tmp_path) -> None:
     loaded = load_registry(path)
 
     assert loaded == [entry]
+
+
+def test_load_registry_raises_typed_error_on_malformed_json(tmp_path) -> None:
+    path = tmp_path / "papers" / "registry.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("not json\n", encoding="utf-8")
+
+    with pytest.raises(RegistryCorruptionError, match="line 1"):
+        load_registry(path)
+
+
+def test_load_registry_raises_typed_error_on_schema_invalid_row(tmp_path) -> None:
+    path = tmp_path / "papers" / "registry.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"arxiv_id":"2501.00001v1"}\n', encoding="utf-8")
+
+    with pytest.raises(RegistryCorruptionError, match="missing"):
+        load_registry(path)
 
 
 def test_cli_init_workspace_creates_requested_directory(tmp_path) -> None:

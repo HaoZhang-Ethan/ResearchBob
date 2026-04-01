@@ -42,13 +42,16 @@ def _migration_conflict_target(destination: Path, child_name: str, source_name: 
 
 
 def _merge_directory_contents(source: Path, destination: Path) -> None:
+    if source.is_symlink():
+        raise OSError(f"Refusing to migrate from symlinked legacy directory: {source}")
+
     for child in list(source.iterdir()):
         target = destination / child.name
         if not target.exists():
             child.rename(target)
             continue
 
-        if child.is_dir() and target.is_dir():
+        if child.is_dir() and target.is_dir() and not child.is_symlink() and not target.is_symlink():
             _merge_directory_contents(child, target)
             continue
 
@@ -60,12 +63,19 @@ def _merge_directory_contents(source: Path, destination: Path) -> None:
 def _paper_directory(workspace: Path, entry: RegistryEntry) -> Path:
     papers_root = workspace / "papers"
     stable_dir = papers_root / _paper_directory_name(entry)
+    if stable_dir.is_symlink():
+        raise OSError(f"Refusing to use symlinked paper directory: {stable_dir}")
     legacy_name_pattern = re.compile(rf"^{re.escape(stable_dir.name)}v\d+$")
 
     legacy_dirs = [
         path
         for path in papers_root.iterdir()
-        if path.is_dir() and path.name != stable_dir.name and legacy_name_pattern.fullmatch(path.name)
+        if (
+            path.is_dir()
+            and not path.is_symlink()
+            and path.name != stable_dir.name
+            and legacy_name_pattern.fullmatch(path.name)
+        )
     ] if papers_root.exists() else []
 
     if legacy_dirs and not stable_dir.exists():
