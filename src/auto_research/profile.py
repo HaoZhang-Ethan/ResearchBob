@@ -23,7 +23,14 @@ def _section_pattern(name: str) -> re.Pattern[str]:
 
 
 def _extract_bullets(body: str) -> list[str]:
-    return [line[2:].strip() for line in body.splitlines() if line.startswith("- ")]
+    bullets: list[str] = []
+    for line in body.splitlines():
+        if not line.startswith("- "):
+            continue
+        content = line[2:].strip()
+        if content:
+            bullets.append(content)
+    return bullets
 
 
 def validate_interest_profile_text(text: str) -> list[str]:

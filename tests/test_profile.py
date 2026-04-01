@@ -26,3 +26,20 @@ def test_validate_interest_profile_flags_missing_sections() -> None:
         "Missing section: Evaluation Heuristics",
         "Missing section: Open Questions",
     ]
+
+
+def test_validate_interest_profile_rejects_template_placeholders() -> None:
+    template = Path(
+        "skills/research-interest-profile/assets/interest-profile-template.md"
+    ).read_text()
+
+    errors = validate_interest_profile_text(template)
+
+    assert errors == [
+        "Section has no bullet items: Core Interests",
+        "Section has no bullet items: Soft Boundaries",
+        "Section has no bullet items: Exclusions",
+        "Section has no bullet items: Current-Phase Bias",
+        "Section has no bullet items: Evaluation Heuristics",
+        "Section has no bullet items: Open Questions",
+    ]
