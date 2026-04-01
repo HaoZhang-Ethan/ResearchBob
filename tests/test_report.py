@@ -404,6 +404,52 @@ def test_compose_report_routes_symlinked_metadata_to_manual_review(tmp_path) -> 
     assert "symlink" in manual_review_section.lower()
 
 
+def test_compose_report_routes_undecodable_primary_artifact_to_manual_review(tmp_path) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+
+    paper_dir = workspace / "papers" / "2501.00009v1"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    (paper_dir / "problem-solution.md").write_bytes(b"\xff\xfe\xfd not utf-8\n")
+
+    report_text = compose_report(workspace, mode="daily", label="2026-03-31").read_text(
+        encoding="utf-8"
+    )
+
+    manual_review_section = report_text.split("## Papers Requiring Manual Verification", 1)[1]
+    assert "2501.00009v1" in manual_review_section
+    assert "utf-8" in manual_review_section.lower()
+
+
+def test_compose_report_routes_undecodable_metadata_to_manual_review(tmp_path) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+
+    paper_dir = workspace / "papers" / "2501.00010v1"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    (paper_dir / "problem-solution.md").write_text(
+        _valid_artifact_text(
+            paper_id="2501.00010v1",
+            title="Undecodable Metadata Paper",
+            opportunity_label="follow-up",
+        ),
+        encoding="utf-8",
+    )
+    (paper_dir / "metadata.json").write_bytes(b"\x80 not utf-8 json\n")
+
+    report_text = compose_report(workspace, mode="daily", label="2026-03-31").read_text(
+        encoding="utf-8"
+    )
+
+    follow_up_section = report_text.split("## Promising Problems, Weak Solutions", 1)[1].split(
+        "## Papers Likely Safe to Skip", 1
+    )[0]
+    manual_review_section = report_text.split("## Papers Requiring Manual Verification", 1)[1]
+
+    assert "Undecodable Metadata Paper" not in follow_up_section
+    assert "Undecodable Metadata Paper" in manual_review_section
+    assert "metadata.json" in manual_review_section
+    assert "utf-8" in manual_review_section.lower()
+
+
 @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires os.mkfifo support")
 def test_compose_report_routes_fifo_metadata_to_manual_review(tmp_path) -> None:
     workspace = ensure_workspace(tmp_path / "research-workspace")

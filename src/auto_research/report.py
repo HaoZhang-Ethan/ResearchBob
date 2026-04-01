@@ -94,6 +94,8 @@ def _load_metadata_arxiv_id(paper_dir: Path) -> tuple[str | None, str | None]:
         payload = json.loads(metadata_path.read_text(encoding="utf-8"))
     except OSError as exc:
         return None, f"Unable to read {METADATA_NAME}: {exc}"
+    except UnicodeError:
+        return None, f"Unable to decode {METADATA_NAME} as UTF-8"
     except json.JSONDecodeError as exc:
         return None, f"Invalid {METADATA_NAME}: {exc.msg}"
 
@@ -153,6 +155,8 @@ def _load_report_entry(paper_dir: Path) -> tuple[str, dict[str, str]] | None:
         text = artifact_path.read_text(encoding="utf-8")
     except OSError as exc:
         return "manual-review", _invalid_entry(paper_dir, f"Unable to read artifact: {exc}")
+    except UnicodeError:
+        return "manual-review", _invalid_entry(paper_dir, "Unable to decode artifact as UTF-8")
 
     errors = validate_extraction_document(text)
     if errors:
@@ -183,6 +187,12 @@ def _load_conflict_entries(paper_dir: Path) -> list[tuple[str, dict[str, str]]]:
             text = artifact_path.read_text(encoding="utf-8")
         except OSError as exc:
             reason = f"Unexpected artifact file present; Unable to read artifact: {exc}"
+            entries.append(
+                ("manual-review", _named_invalid_entry(paper_dir, artifact_path.name, reason))
+            )
+            continue
+        except UnicodeError:
+            reason = "Unexpected artifact file present; Unable to decode artifact as UTF-8"
             entries.append(
                 ("manual-review", _named_invalid_entry(paper_dir, artifact_path.name, reason))
             )

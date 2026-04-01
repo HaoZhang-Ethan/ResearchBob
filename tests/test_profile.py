@@ -60,6 +60,18 @@ def test_validate_profile_cli_missing_file(tmp_path, capsys) -> None:
     assert "Profile path does not exist" in captured.err
 
 
+def test_validate_profile_cli_rejects_undecodable_utf8(tmp_path, capsys) -> None:
+    profile_path = tmp_path / "interest-profile.md"
+    profile_path.write_bytes(b"\xff\xfe\xfd not utf-8\n")
+
+    exit_code = cli_main(["validate-profile", str(profile_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code != 0
+    assert "utf-8" in captured.err.lower()
+    assert "Traceback" not in captured.err
+
+
 def test_validate_interest_profile_detects_duplicate_headings() -> None:
     text = """# Research Interest Profile
 

@@ -1,4 +1,11 @@
+import errno
+import os
+import time
+
 from pathlib import Path
+from threading import Thread
+
+import pytest
 
 from auto_research.cli import main as cli_main
 from auto_research.extraction import parse_extraction_document, validate_extraction_document
@@ -201,3 +208,66 @@ def test_validate_extraction_cli_prints_errors_to_stderr(tmp_path, capsys) -> No
     assert exit_code == 1
     assert "Section has no content: Problem" in captured.err
     assert captured.out == ""
+
+
+def test_validate_extraction_cli_rejects_symlinked_input(tmp_path, capsys) -> None:
+    target = tmp_path / "target.md"
+    target.write_text(FIXTURE_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+
+    symlink_path = tmp_path / "problem-solution.md"
+    os.symlink(target, symlink_path)
+
+    exit_code = cli_main(["validate-extraction", str(symlink_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code != 0
+    assert "symlink" in captured.err.lower()
+    assert "Traceback" not in captured.err
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires os.mkfifo support")
+def test_validate_extraction_cli_rejects_fifo_input(tmp_path, capsys) -> None:
+    fifo_path = tmp_path / "problem-solution.md"
+    os.mkfifo(fifo_path)
+    payload = FIXTURE_PATH.read_text(encoding="utf-8").encode("utf-8")
+
+    def fifo_writer() -> None:
+        deadline = time.monotonic() + 0.25
+        while time.monotonic() < deadline:
+            try:
+                fd = os.open(fifo_path, os.O_WRONLY | os.O_NONBLOCK)
+            except OSError as exc:
+                if exc.errno == errno.ENXIO:
+                    time.sleep(0.005)
+                    continue
+                return
+            else:
+                try:
+                    os.write(fd, payload)
+                finally:
+                    os.close(fd)
+                return
+
+    thread = Thread(target=fifo_writer, daemon=True)
+    thread.start()
+    try:
+        exit_code = cli_main(["validate-extraction", str(fifo_path)])
+    finally:
+        thread.join(timeout=1)
+    captured = capsys.readouterr()
+
+    assert exit_code != 0
+    assert "not a file" in captured.err.lower() or "non-regular" in captured.err.lower()
+    assert "Traceback" not in captured.err
+
+
+def test_validate_extraction_cli_rejects_undecodable_utf8(tmp_path, capsys) -> None:
+    artifact_path = tmp_path / "problem-solution.md"
+    artifact_path.write_bytes(b"\xff\xfe\xfd not utf-8\n")
+
+    exit_code = cli_main(["validate-extraction", str(artifact_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code != 0
+    assert "utf-8" in captured.err.lower()
+    assert "Traceback" not in captured.err

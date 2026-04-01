@@ -82,6 +82,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         except OSError as exc:
             print(f"Unable to read profile: {exc}", file=sys.stderr)
             return 1
+        except UnicodeError:
+            print(f"Profile is not valid UTF-8: {args.path}", file=sys.stderr)
+            return 1
         errors = validate_interest_profile_text(text)
         if errors:
             for error in errors:
@@ -138,10 +141,22 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "validate-extraction":
         extraction_path = Path(args.path)
+        if extraction_path.is_symlink():
+            print(f"Extraction artifact path is a symlink: {args.path}", file=sys.stderr)
+            return 1
+        if not extraction_path.exists():
+            print(f"Extraction artifact path does not exist: {args.path}", file=sys.stderr)
+            return 1
+        if not extraction_path.is_file():
+            print(f"Extraction artifact path is not a file: {args.path}", file=sys.stderr)
+            return 1
         try:
             text = extraction_path.read_text(encoding="utf-8")
         except OSError as exc:
             print(f"Unable to read extraction artifact: {exc}", file=sys.stderr)
+            return 1
+        except UnicodeError:
+            print(f"Extraction artifact is not valid UTF-8: {args.path}", file=sys.stderr)
             return 1
         errors = validate_extraction_document(text)
         if errors:
