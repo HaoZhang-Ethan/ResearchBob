@@ -16,7 +16,7 @@ def build_query_from_profile(profile: InterestProfile) -> str:
 
 
 def _paper_directory_name(entry: RegistryEntry) -> str:
-    return entry.arxiv_id.replace("/", "_")
+    return entry.stable_id.replace("/", "_")
 
 
 def run_intake(workspace: Path, profile_path: Path, max_results: int = 25) -> list[RegistryEntry]:
