@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 from typing import Sequence
 
+from auto_research.profile import validate_interest_profile_text
 from auto_research.workspace import ensure_workspace
 
 
@@ -14,7 +15,8 @@ def build_parser() -> argparse.ArgumentParser:
     init_workspace = subparsers.add_parser("init-workspace")
     init_workspace.add_argument("--workspace", default="research-workspace")
 
-    subparsers.add_parser("validate-profile")
+    validate_profile = subparsers.add_parser("validate-profile")
+    validate_profile.add_argument("path")
     subparsers.add_parser("intake")
     subparsers.add_parser("validate-extraction")
     subparsers.add_parser("compose-report")
@@ -28,6 +30,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "init-workspace":
         ensure_workspace(Path(args.workspace))
+        return 0
+
+    if args.command == "validate-profile":
+        text = Path(args.path).read_text(encoding="utf-8")
+        errors = validate_interest_profile_text(text)
+        if errors:
+            for error in errors:
+                print(error)
+            return 1
+        print("interest profile is valid")
         return 0
 
     return 0

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research Interest Profile"
+  short_description: "Maintain a persistent scouting profile"
+  default_prompt: "Use $research-interest-profile to revise my long-term arXiv scouting profile."
