@@ -41,7 +41,7 @@ def merge_registry_entries(
 
         if (
             current.updated_at == entry.updated_at
-            and entry.version_number > current.version_number
+            and entry.version_number >= current.version_number
         ):
             merged[entry.stable_id] = entry
 

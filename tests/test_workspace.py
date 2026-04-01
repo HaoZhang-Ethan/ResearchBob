@@ -157,6 +157,36 @@ def test_merge_registry_entries_orders_equal_timestamps_deterministically() -> N
     ]
 
 
+def test_merge_registry_entries_refreshes_metadata_on_exact_tie() -> None:
+    existing = RegistryEntry(
+        arxiv_id="2501.00020v2",
+        title="Exact tie paper",
+        summary="stale metadata",
+        pdf_url="https://arxiv.org/pdf/2501.00020v2",
+        published_at="2026-01-02T00:00:00Z",
+        updated_at="2026-01-07T00:00:00Z",
+        relevance_band="adjacent",
+        source="arxiv",
+    )
+    incoming = RegistryEntry(
+        arxiv_id="2501.00020v2",
+        title="Exact tie paper",
+        summary="refreshed metadata",
+        pdf_url="https://arxiv.org/pdf/2501.00020v2",
+        published_at="2026-01-02T00:00:00Z",
+        updated_at="2026-01-07T00:00:00Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    merged = merge_registry_entries([existing], [incoming])
+
+    assert len(merged) == 1
+    assert merged[0].arxiv_id == "2501.00020v2"
+    assert merged[0].relevance_band == "high-match"
+    assert merged[0].summary == "refreshed metadata"
+
+
 def test_registry_write_load_round_trip(tmp_path) -> None:
     entry = RegistryEntry(
         arxiv_id="2501.00002v1",
