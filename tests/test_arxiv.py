@@ -23,6 +23,23 @@ def test_build_query_from_profile_uses_core_and_soft_topics() -> None:
     assert "systems papers adjacent to inference efficiency" in query
 
 
+def test_build_query_from_profile_escapes_embedded_quotes() -> None:
+    query = build_query_from_profile(
+        load_interest_profile(Path("tests/fixtures/interest_profile.md"))
+    )
+    assert '\\"' not in query
+
+    quoted_query = build_query_from_profile(
+        intake_module.InterestProfile(
+            core_interests=['systems for "LLM serving"'],
+            soft_boundaries=['adjacent "scheduling" work'],
+        )
+    )
+
+    assert 'all:"systems for \\"LLM serving\\""' in quoted_query
+    assert 'all:"adjacent \\"scheduling\\" work"' in quoted_query
+
+
 def test_arxiv_client_parses_atom_feed() -> None:
     transport = httpx.MockTransport(
         lambda request: httpx.Response(200, text=FIXTURE_XML)
@@ -103,6 +120,18 @@ def test_validate_profile_handles_read_errors(monkeypatch, tmp_path, capsys) -> 
     assert result == 1
     captured = capsys.readouterr()
     assert "Unable to read profile: boom" in captured.err
+
+
+def test_validate_profile_prints_content_errors_to_stderr(tmp_path, capsys) -> None:
+    profile_path = tmp_path / "bad-profile.md"
+    profile_path.write_text("# invalid\n", encoding="utf-8")
+
+    result = main(["validate-profile", str(profile_path)])
+
+    assert result == 1
+    captured = capsys.readouterr()
+    assert "Missing section: Core Interests" in captured.err
+    assert captured.out == ""
 
 
 def test_intake_cli_uses_workspace_relative_default_profile(tmp_path, monkeypatch, capsys) -> None:

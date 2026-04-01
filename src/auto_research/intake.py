@@ -11,9 +11,14 @@ from auto_research.registry import load_registry, merge_registry_entries, write_
 from auto_research.workspace import ensure_workspace
 
 
+def _query_term_clause(term: str) -> str:
+    escaped = term.replace("\\", "\\\\").replace('"', '\\"')
+    return f'all:"{escaped}"'
+
+
 def build_query_from_profile(profile: InterestProfile) -> str:
     query_terms = profile.core_interests + profile.soft_boundaries[:2]
-    return " OR ".join(f'all:"{term}"' for term in query_terms)
+    return " OR ".join(_query_term_clause(term) for term in query_terms)
 
 
 def _paper_directory_name(entry: RegistryEntry) -> str:

@@ -58,7 +58,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         errors = validate_interest_profile_text(text)
         if errors:
             for error in errors:
-                print(error)
+                print(error, file=sys.stderr)
             return 1
         print("interest profile is valid")
         return 0
