@@ -14,6 +14,7 @@ from auto_research.profile import validate_interest_profile_text
 from auto_research.registry import RegistryCorruptionError
 from auto_research.report import compose_report
 from auto_research.workspace import ensure_workspace
+from auto_research.automation import PipelineConfig, run_daily_pipeline
 
 
 def _raw_argv(argv: Sequence[str] | None) -> list[str]:
@@ -49,6 +50,17 @@ def build_parser() -> argparse.ArgumentParser:
     compose.add_argument("--workspace", default="research-workspace")
     compose.add_argument("--mode", choices=("daily", "manual"), default="daily")
     compose.add_argument("--label", required=True)
+
+    pipeline = subparsers.add_parser("daily-pipeline")
+    pipeline.add_argument("--workspace", default="research-workspace")
+    pipeline.add_argument("--profile", default="research-workspace/profile/interest-profile.md")
+    pipeline.add_argument("--max-results", type=int, default=20)
+    pipeline.add_argument("--prefilter-limit", type=int, default=15)
+    pipeline.add_argument("--top-k", type=int, default=5)
+    pipeline.add_argument("--label")
+    pipeline.add_argument("--model")
+    pipeline.add_argument("--overwrite-summaries", action="store_true")
+    pipeline.add_argument("--push", action="store_true")
 
     return parser
 
@@ -183,6 +195,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Unable to write report: {exc}", file=sys.stderr)
             return 1
         print(report_path)
+        return 0
+
+    if args.command == "daily-pipeline":
+        try:
+            result = run_daily_pipeline(
+                PipelineConfig(
+                    workspace=Path(args.workspace),
+                    profile_path=(
+                        Path(args.profile)
+                        if _profile_path_was_overridden(raw_argv)
+                        else None
+                    ),
+                    max_results=args.max_results,
+                    prefilter_limit=args.prefilter_limit,
+                    top_k=args.top_k,
+                    label=args.label,
+                    model=args.model,
+                    overwrite_summaries=args.overwrite_summaries,
+                    push=args.push,
+                )
+            )
+        except (OSError, ValueError, RuntimeError) as exc:
+            print(f"Daily pipeline failed: {exc}", file=sys.stderr)
+            return 1
+        print(result.report_path)
+        print(result.ris_path)
         return 0
 
     return 0
