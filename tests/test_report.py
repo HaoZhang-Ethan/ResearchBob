@@ -434,6 +434,46 @@ def test_compose_report_routes_symlinked_metadata_to_manual_review(tmp_path) -> 
     assert "symlink" in manual_review_section.lower()
 
 
+def test_compose_report_routes_metadata_title_mismatch_to_manual_review_without_trusting_artifact_title(
+    tmp_path,
+) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+
+    paper_dir = workspace / "papers" / "2501.00001v1"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    (paper_dir / "problem-solution.md").write_text(
+        _valid_artifact_text(
+            paper_id="2501.00001v1",
+            title="Forged Artifact Title",
+            opportunity_label="read-now",
+        ),
+        encoding="utf-8",
+    )
+    (paper_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "arxiv_id": "2501.00001v1",
+                "title": "Canonical Metadata Title",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report_text = compose_report(workspace, mode="daily", label="2026-03-31").read_text(
+        encoding="utf-8"
+    )
+
+    read_now_section = report_text.split("## Top Papers to Read Now", 1)[1].split(
+        "## Promising Problems, Weak Solutions", 1
+    )[0]
+    manual_review_section = report_text.split("## Papers Requiring Manual Verification", 1)[1]
+
+    assert "Forged Artifact Title" not in report_text
+    assert "Canonical Metadata Title" not in read_now_section
+    assert "Canonical Metadata Title" in manual_review_section
+    assert "metadata title" in manual_review_section.lower()
+
+
 def test_compose_report_routes_undecodable_primary_artifact_to_manual_review(tmp_path) -> None:
     workspace = ensure_workspace(tmp_path / "research-workspace")
 
@@ -624,9 +664,11 @@ def test_compose_daily_report_routes_identity_mismatches_to_manual_review(
 
     assert "## Top Papers to Read Now\n- None" in report_text
     assert "Papers Requiring Manual Verification" in report_text
-    assert "Mismatched Identity Artifact" in report_text
+    assert "Mismatched Identity Artifact" not in report_text
+    assert "Canonical Metadata Title" in report_text
     assert "does not match containing directory" in report_text
     assert "does not match metadata arxiv_id" in report_text
+    assert "metadata title" in report_text.lower()
 
 
 def test_compose_manual_report_writes_to_manual_directory(tmp_path) -> None:

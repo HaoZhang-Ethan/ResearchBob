@@ -199,6 +199,20 @@ def test_intake_cli_handles_missing_default_profile(tmp_path, capsys) -> None:
     assert "Unable to read intake profile:" in captured.err
 
 
+@pytest.mark.parametrize("max_results", ["0", "-4"])
+def test_intake_cli_rejects_non_positive_max_results(tmp_path, capsys, max_results) -> None:
+    workspace = tmp_path / "fresh-workspace"
+
+    result = main(["intake", "--workspace", str(workspace), "--max-results", max_results])
+
+    assert result == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "max-results" in captured.err
+    assert "positive" in captured.err.lower()
+    assert "Unable to read intake profile:" not in captured.err
+
+
 def test_intake_cli_fails_cleanly_when_httpx_client_init_fails(
     tmp_path, monkeypatch, capsys
 ) -> None:

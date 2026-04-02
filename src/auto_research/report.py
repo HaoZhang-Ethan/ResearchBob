@@ -80,40 +80,48 @@ def _expected_directory_names(paper_id: str) -> set[str]:
         paper_id.replace("/", "_"),
     }
 
+def _normalized_title(value: str) -> str:
+    return " ".join(value.split())
 
-def _load_metadata_arxiv_id(paper_dir: Path) -> tuple[str | None, str | None]:
+
+def _load_metadata(paper_dir: Path) -> tuple[str | None, str | None, str | None]:
     metadata_path = paper_dir / METADATA_NAME
     if metadata_path.is_symlink():
-        return None, f"Refusing to read symlinked {METADATA_NAME}"
+        return None, None, f"Refusing to read symlinked {METADATA_NAME}"
     if not metadata_path.exists():
-        return None, None
+        return None, None, None
     if not metadata_path.is_file():
-        return None, f"Refusing to read non-regular {METADATA_NAME}"
+        return None, None, f"Refusing to read non-regular {METADATA_NAME}"
 
     try:
         payload = json.loads(metadata_path.read_text(encoding="utf-8"))
     except OSError as exc:
-        return None, f"Unable to read {METADATA_NAME}: {exc}"
+        return None, None, f"Unable to read {METADATA_NAME}: {exc}"
     except UnicodeError:
-        return None, f"Unable to decode {METADATA_NAME} as UTF-8"
+        return None, None, f"Unable to decode {METADATA_NAME} as UTF-8"
     except json.JSONDecodeError as exc:
-        return None, f"Invalid {METADATA_NAME}: {exc.msg}"
+        return None, None, f"Invalid {METADATA_NAME}: {exc.msg}"
 
     if not isinstance(payload, dict):
-        return None, f"Invalid {METADATA_NAME}: expected JSON object"
+        return None, None, f"Invalid {METADATA_NAME}: expected JSON object"
 
     arxiv_id = payload.get("arxiv_id")
     if not isinstance(arxiv_id, str) or not arxiv_id:
-        return None, f"{METADATA_NAME} is missing arxiv_id"
+        return None, None, f"{METADATA_NAME} is missing arxiv_id"
 
-    return arxiv_id, None
+    title = payload.get("title")
+    if not isinstance(title, str) or not title.strip():
+        title = None
+
+    return arxiv_id, title, None
 
 
-def _manual_review_reason(
+def _manual_review_details(
     paper_dir: Path,
     frontmatter: dict[str, str],
-) -> str | None:
+) -> tuple[str | None, str | None]:
     reasons: list[str] = []
+    safe_title: str | None = None
     paper_id = frontmatter["paper_id"]
 
     if frontmatter["confidence"] == "low":
@@ -128,18 +136,23 @@ def _manual_review_reason(
             f'Artifact paper_id "{paper_id}" does not match containing directory "{paper_dir.name}"'
         )
 
-    metadata_arxiv_id, metadata_error = _load_metadata_arxiv_id(paper_dir)
+    metadata_arxiv_id, metadata_title, metadata_error = _load_metadata(paper_dir)
     if metadata_error is not None:
         reasons.append(metadata_error)
     elif metadata_arxiv_id is not None and metadata_arxiv_id != paper_id:
         reasons.append(
             f'Artifact paper_id "{paper_id}" does not match metadata arxiv_id "{metadata_arxiv_id}"'
         )
+    if metadata_title is not None and _normalized_title(metadata_title) != _normalized_title(
+        frontmatter["title"]
+    ):
+        reasons.append("Artifact title does not match metadata title")
+        safe_title = metadata_title
 
     if not reasons:
-        return None
+        return None, None
 
-    return "; ".join(reasons)
+    return "; ".join(reasons), safe_title
 
 
 def _load_report_entry(paper_dir: Path) -> tuple[str, dict[str, str]] | None:
@@ -163,9 +176,12 @@ def _load_report_entry(paper_dir: Path) -> tuple[str, dict[str, str]] | None:
         return "manual-review", _invalid_entry(paper_dir, "; ".join(errors))
 
     frontmatter = parse_extraction_document(text)
-    review_reason = _manual_review_reason(paper_dir, frontmatter)
+    review_reason, safe_title = _manual_review_details(paper_dir, frontmatter)
     if review_reason is not None:
-        return "manual-review", _noted_entry(frontmatter, review_reason)
+        entry = _noted_entry(frontmatter, review_reason)
+        if safe_title is not None:
+            entry = {**entry, "title": safe_title}
+        return "manual-review", entry
 
     return frontmatter["opportunity_label"], {**frontmatter, "note": ""}
 

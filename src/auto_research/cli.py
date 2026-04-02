@@ -94,6 +94,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if args.command == "intake":
+        if args.max_results <= 0:
+            print("Invalid --max-results: must be a positive integer", file=sys.stderr)
+            return 1
         workspace = Path(args.workspace)
         profile_path = (
             Path(args.profile)
