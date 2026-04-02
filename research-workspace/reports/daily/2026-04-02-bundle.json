@@ -1,0 +1,96 @@
+{
+  "label": "2026-04-02",
+  "selected_papers": [
+    {
+      "paper_id": "2603.06728v1",
+      "title": "Orion: Characterizing and Programming Apple's Neural Engine for LLM Training and Inference",
+      "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.06728",
+      "pdf_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.06728/source.pdf",
+      "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.06728/problem-solution.md",
+      "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.06728/detailed-analysis.md",
+      "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.06728/state.json"
+    },
+    {
+      "paper_id": "2603.24239v1",
+      "title": "DVM: Real-Time Kernel Generation for Dynamic AI Models",
+      "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.24239",
+      "pdf_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.24239/source.pdf",
+      "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.24239/problem-solution.md",
+      "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.24239/detailed-analysis.md",
+      "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.24239/state.json"
+    },
+    {
+      "paper_id": "2603.23566v1",
+      "title": "AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+      "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.23566",
+      "pdf_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.23566/source.pdf",
+      "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.23566/problem-solution.md",
+      "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.23566/detailed-analysis.md",
+      "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.23566/state.json"
+    },
+    {
+      "paper_id": "2603.08088v1",
+      "title": "EAGLE-Pangu: Accelerator-Safe Tree Speculative Decoding on Ascend NPUs",
+      "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.08088",
+      "pdf_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.08088/source.pdf",
+      "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.08088/problem-solution.md",
+      "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.08088/detailed-analysis.md",
+      "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.08088/state.json"
+    },
+    {
+      "paper_id": "2603.26835v3",
+      "title": "ANVIL: Accelerator-Native Video Interpolation via Codec Motion Vector Priors",
+      "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.26835",
+      "pdf_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.26835/source.pdf",
+      "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.26835/problem-solution.md",
+      "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.26835/detailed-analysis.md",
+      "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.26835/state.json"
+    },
+    {
+      "paper_id": "2603.18372v1",
+      "title": "TENSURE: Fuzzing Sparse Tensor Compilers (Registered Report)",
+      "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.18372",
+      "pdf_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.18372/source.pdf",
+      "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.18372/problem-solution.md",
+      "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.18372/detailed-analysis.md",
+      "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.18372/state.json"
+    },
+    {
+      "paper_id": "2603.03383v1",
+      "title": "Accelerating OpenPangu Inference on NPU via Speculative Decoding",
+      "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.03383",
+      "pdf_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.03383/source.pdf",
+      "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.03383/problem-solution.md",
+      "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.03383/detailed-analysis.md",
+      "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.03383/state.json"
+    },
+    {
+      "paper_id": "2603.23640v1",
+      "title": "LLM Inference at the Edge: Mobile, NPU, and GPU Performance Efficiency Trade-offs Under Sustained Load",
+      "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.23640",
+      "pdf_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.23640/source.pdf",
+      "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.23640/problem-solution.md",
+      "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.23640/detailed-analysis.md",
+      "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.23640/state.json"
+    },
+    {
+      "paper_id": "2603.20174v1",
+      "title": "TinyML Enhances CubeSat Mission Capabilities",
+      "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.20174",
+      "pdf_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.20174/source.pdf",
+      "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.20174/problem-solution.md",
+      "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.20174/detailed-analysis.md",
+      "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.20174/state.json"
+    },
+    {
+      "paper_id": "2603.18707v1",
+      "title": "From ex(p) to poly: Gaussian Splatting with Polynomial Kernels",
+      "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.18707",
+      "pdf_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.18707/source.pdf",
+      "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.18707/problem-solution.md",
+      "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.18707/detailed-analysis.md",
+      "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.18707/state.json"
+    }
+  ],
+  "failed_or_retry": []
+}
