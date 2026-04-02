@@ -18,3 +18,4 @@ def test_cli_help_lists_phase1_commands() -> None:
     assert "intake" in result.stdout
     assert "validate-extraction" in result.stdout
     assert "compose-report" in result.stdout
+    assert "daily-pipeline" in result.stdout
