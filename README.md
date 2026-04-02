@@ -4,15 +4,28 @@
 
 AutoResearch is a local research-automation workflow for continuously discovering, filtering, analyzing, and summarizing arXiv papers around a persistent research profile.
 
-It is designed for the following loop:
+Its motivation is simple: paper volume is too high to track manually, while the real value is not only what was published, but also:
 
-1. maintain a long-term research-interest profile
-2. fetch fresh arXiv papers
-3. rank and shortlist candidates
-4. analyze selected papers in a structured way
-5. generate daily and long-term summaries
-6. export a Zotero-compatible RIS file
-7. optionally commit and push generated artifacts back to GitHub
+- what problem the paper is actually solving,
+- whether the solution is strong or still weak,
+- whether the paper exposes a gap that could become your next idea.
+
+So this repository is not just a paper fetcher. It is a local research assistant for:
+
+- idea discovery,
+- idea summarization,
+- idea comparison,
+- and long-term direction tracking.
+
+## What This Project Is
+
+AutoResearch combines two layers:
+
+1. **Reusable Codex skills**
+   for interactive workflows such as profile editing, paper intake, extraction, and reporting.
+
+2. **Local automation pipelines**
+   for scheduled intake, Top-K selection, PDF download, structured analysis, daily summaries, long-term summaries, RIS export, and optional git sync.
 
 ## Highlights
 
@@ -23,10 +36,16 @@ It is designed for the following loop:
 - Daily summary and rolling long-term summary
 - Zotero RIS export
 - Optional fully automated `git commit + push`
+- Reusable Codex skills under `skills/`
 
 ## Project Structure
 
 ```text
+docs/
+├── local-automation-usage.md
+└── superpowers/
+    ├── plans/
+    └── specs/
 research-workspace/
 ├── profile/
 │   └── interest-profile.md
@@ -44,6 +63,15 @@ research-workspace/
 │   └── zotero/
 └── pipeline/
     └── run-history.jsonl
+scripts/
+├── daily_pipeline.py
+skills/
+├── research-interest-profile/
+├── paper-intake-and-normalize/
+├── problem-solution-extractor/
+└── report-composer/
+src/auto_research/
+tests/
 ```
 
 ## What the Pipeline Produces
@@ -64,6 +92,31 @@ Per run:
 - `reports/longterm/longterm-summary.md`
 - `exports/zotero/<date>.ris`
 - `pipeline/run-history.jsonl`
+
+## Codex Skill Usage
+
+This repository can also be used as a set of Codex skills.
+
+Available skills:
+
+- [research-interest-profile](/Users/zhanghao/Project/AutoResearch/.worktrees/automation-pipeline-v2/skills/research-interest-profile/SKILL.md)
+- [paper-intake-and-normalize](/Users/zhanghao/Project/AutoResearch/.worktrees/automation-pipeline-v2/skills/paper-intake-and-normalize/SKILL.md)
+- [problem-solution-extractor](/Users/zhanghao/Project/AutoResearch/.worktrees/automation-pipeline-v2/skills/problem-solution-extractor/SKILL.md)
+- [report-composer](/Users/zhanghao/Project/AutoResearch/.worktrees/automation-pipeline-v2/skills/report-composer/SKILL.md)
+
+Example prompts:
+
+```text
+Use $research-interest-profile to revise my research profile.
+Use $paper-intake-and-normalize to fetch today's arXiv papers.
+Use $problem-solution-extractor to analyze this paper.
+Use $report-composer to generate today's report.
+```
+
+In short:
+
+- `skills/` is for interactive use
+- `daily-pipeline` is for scheduled local automation
 
 ## CLI Commands
 
@@ -87,11 +140,11 @@ Available commands:
 - Network access for arXiv and model calls
 - An OpenAI-compatible API endpoint for automated summarization/ranking
 
-The code runs fine in local dev on Python 3.11 in this repo, but the declared project target remains `>=3.12`.
+The code runs fine in local development on Python 3.11 in this repository, but the declared target remains `>=3.12`.
 
 ## Local Configuration
 
-Create a local config file in the repository root:
+Create a local file in the repository root:
 
 ```bash
 .env.local
@@ -118,7 +171,7 @@ PYTHONPATH=src python -m auto_research.cli init-workspace --workspace research-w
 
 ### 2. Create or edit the research profile
 
-Main profile file:
+Main input file:
 
 ```text
 research-workspace/profile/interest-profile.md
@@ -132,7 +185,7 @@ PYTHONPATH=src python -m auto_research.cli validate-profile research-workspace/p
 
 ### 3. Run the daily pipeline
 
-If local proxy variables interfere with direct arXiv or model-gateway access, unset them for the command:
+If local proxy environment variables interfere with direct arXiv or gateway access, unset them for the command:
 
 ```bash
 cd /path/to/AutoResearch
@@ -164,7 +217,7 @@ The current automation pipeline:
 8. generates a daily report
 9. generates a daily idea summary
 10. updates a long-term summary
-11. exports Zotero RIS
+11. exports RIS
 12. optionally commits and pushes artifacts
 
 ## Scheduling
@@ -175,7 +228,7 @@ Example cron entry for running every day at 09:00:
 0 9 * * * cd /path/to/AutoResearch && env -u all_proxy -u http_proxy -u https_proxy PYTHONPATH=src python scripts/daily_pipeline.py >> /tmp/auto-research-daily.log 2>&1
 ```
 
-## Notes on Current Version
+## Notes on the Current Version
 
 The automation is intentionally incremental:
 
@@ -188,7 +241,7 @@ The system is meant to support idea discovery, not to replace careful paper read
 
 ## Known Limits
 
-- PDF text extraction is currently best-effort and lightweight
+- PDF text extraction is currently lightweight and best-effort
 - the workflow is local-only in this version
 - the long-term summary is incrementally updated but still evolving
 - model output quality depends on the configured provider/model
@@ -205,6 +258,23 @@ AutoResearch 是一套本地运行的研究自动化流程，用来持续完成�
 6. 导出 Zotero 可导入的 RIS 文件
 7. 可选自动提交并 push 到 GitHub
 
+这个项目的动机很直接：
+
+- 论文太多，人工追踪成本太高
+- 真正重要的不只是“今天发了什么”
+- 更重要的是：
+  - 它在解决什么问题
+  - 现有 solution 有没有明显缺口
+  - 它能不能启发你自己的下一步 idea
+
+所以它不只是一个论文抓取器，也不只是一个自动摘要器。  
+它更像一套本地运行的研究助手，帮助你做：
+
+- idea 发现
+- idea 总结
+- idea 比较
+- 长线方向积累
+
 ## 主要特点
 
 - 本地优先
@@ -214,25 +284,66 @@ AutoResearch 是一套本地运行的研究自动化流程，用来持续完成�
 - 日报 + 长线总结
 - Zotero RIS 导出
 - 可选自动 `git commit + push`
+- `skills/` 可直接作为 Codex skill 使用
 
-## 主要输出
+## 目录结构
 
-每篇论文：
+```text
+docs/
+├── local-automation-usage.md
+└── superpowers/
+    ├── plans/
+    └── specs/
+research-workspace/
+├── profile/
+│   └── interest-profile.md
+├── papers/
+│   └── <paper-id>/
+│       ├── metadata.json
+│       ├── source.pdf
+│       ├── problem-solution.md
+│       ├── detailed-analysis.md
+│       └── state.json
+├── reports/
+│   ├── daily/
+│   └── longterm/
+├── exports/
+│   └── zotero/
+└── pipeline/
+    └── run-history.jsonl
+scripts/
+├── daily_pipeline.py
+skills/
+├── research-interest-profile/
+├── paper-intake-and-normalize/
+├── problem-solution-extractor/
+└── report-composer/
+src/auto_research/
+tests/
+```
 
-- `metadata.json`
-- `source.pdf`
-- `problem-solution.md`
-- `detailed-analysis.md`
-- `state.json`
+## 作为 Codex Skill 使用
 
-每次运行：
+这个仓库里不只是自动化脚本，还包含可以直接作为 Codex skill 使用的内容，位于 `skills/` 目录：
 
-- `reports/daily/<date>.md`
-- `reports/daily/<date>-summary.md`
-- `reports/daily/<date>-bundle.json`
-- `reports/longterm/longterm-summary.md`
-- `exports/zotero/<date>.ris`
-- `pipeline/run-history.jsonl`
+- [research-interest-profile](/Users/zhanghao/Project/AutoResearch/.worktrees/automation-pipeline-v2/skills/research-interest-profile/SKILL.md)
+- [paper-intake-and-normalize](/Users/zhanghao/Project/AutoResearch/.worktrees/automation-pipeline-v2/skills/paper-intake-and-normalize/SKILL.md)
+- [problem-solution-extractor](/Users/zhanghao/Project/AutoResearch/.worktrees/automation-pipeline-v2/skills/problem-solution-extractor/SKILL.md)
+- [report-composer](/Users/zhanghao/Project/AutoResearch/.worktrees/automation-pipeline-v2/skills/report-composer/SKILL.md)
+
+使用方式例如：
+
+```text
+Use $research-interest-profile to revise my research profile.
+Use $paper-intake-and-normalize to fetch today's arXiv papers.
+Use $problem-solution-extractor to analyze this paper.
+Use $report-composer to generate today's report.
+```
+
+也就是说：
+
+- `skills/` 更适合交互式使用
+- `daily-pipeline` 更适合本地自动定时跑
 
 ## 本地配置
 
@@ -312,6 +423,25 @@ python -m auto_research.cli daily-pipeline --workspace research-workspace --push
 11. 导出 RIS
 12. 可选自动 `git commit + push`
 
+## 当前输出
+
+每篇论文：
+
+- `metadata.json`
+- `source.pdf`
+- `problem-solution.md`
+- `detailed-analysis.md`
+- `state.json`
+
+每次运行：
+
+- `reports/daily/<date>.md`
+- `reports/daily/<date>-summary.md`
+- `reports/daily/<date>-bundle.json`
+- `reports/longterm/longterm-summary.md`
+- `exports/zotero/<date>.ris`
+- `pipeline/run-history.jsonl`
+
 ## 定时运行示例
 
 每天早上 9 点：
@@ -332,7 +462,7 @@ python -m auto_research.cli daily-pipeline --workspace research-workspace --push
 
 ## 当前限制
 
-- PDF 文本提取目前是轻量、best-effort 版本
+- PDF 文本提取目前仍然是轻量、best-effort 版本
 - 这一版仍然是本地运行，不是云端调度
 - 长线总结已经可用，但后续还可以继续增强
-- 最终输出质量仍然依赖模型和网关配置
+- 最终输出质量依然取决于模型和网关配置
