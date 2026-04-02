@@ -10,6 +10,35 @@ It is built for one practical goal:
 
 ---
 
+## Two Ways to Use This Project
+
+### Usage Mode 1: Local Automation Workflow
+
+Use AutoResearch as a local automation project that:
+
+- fetches arXiv papers,
+- ranks and selects candidates,
+- downloads PDFs,
+- generates short and detailed analyses,
+- writes daily and long-term summaries,
+- exports RIS,
+- and optionally commits/pushes generated outputs.
+
+This is the right mode if you want the system to run every day by itself.
+
+### Usage Mode 2: Codex Skill Set
+
+Use the repository as a set of reusable Codex skills for interactive paper work:
+
+- revise a research profile,
+- fetch papers on demand,
+- analyze a specific paper,
+- compose a report interactively.
+
+This is the right mode if you want to work with Codex paper by paper instead of only relying on scheduled automation.
+
+---
+
 ## Quick Start
 
 ### 1. Initialize a workspace
@@ -136,6 +165,33 @@ In practice:
 - `skills/` is for interactive use with Codex
 - `daily-pipeline` is for scheduled local automation
 
+### How to Install the Skills into Codex
+
+If you want these skills available globally in Codex across repositories, install them into your Codex skills directory:
+
+```bash
+~/.codex/skills/
+```
+
+Example using symlinks:
+
+```bash
+mkdir -p ~/.codex/skills
+ln -s /path/to/AutoResearch/skills/research-interest-profile ~/.codex/skills/research-interest-profile
+ln -s /path/to/AutoResearch/skills/paper-intake-and-normalize ~/.codex/skills/paper-intake-and-normalize
+ln -s /path/to/AutoResearch/skills/problem-solution-extractor ~/.codex/skills/problem-solution-extractor
+ln -s /path/to/AutoResearch/skills/report-composer ~/.codex/skills/report-composer
+```
+
+If you prefer, you can copy the directories instead of symlinking them.
+
+After installation, restart Codex if your setup requires a restart before newly added skills are discovered.
+
+### Which Mode Should You Choose?
+
+- Choose **Usage Mode 1** if you want unattended daily automation.
+- Choose **Usage Mode 2** if you want interactive, paper-by-paper work with Codex.
+
 ---
 
 ## Directory Structure
@@ -255,6 +311,62 @@ The current repo is also tested locally on Python 3.11 during development.
 AutoResearch 是一套本地运行的研究自动化流程，用来持续完成这件事：
 
 > 把大量新论文收敛成少量真正值得继续想的 idea。
+
+---
+
+## 两种使用方法
+
+### 使用方法一：作为本地自动化流程
+
+把 AutoResearch 当成一个本地自动化项目来用：
+
+- 定期抓论文
+- 自动筛选 Top K
+- 下载 PDF
+- 生成短摘要和详细分析
+- 生成日报和长线总结
+- 导出 RIS
+- 可选自动提交和 push
+
+这种方式适合你想让它每天自动运行。
+
+### 使用方法二：作为 Codex Skill 使用
+
+把仓库里的 `skills/` 当成一组可复用的 Codex skills 来用。
+
+这种方式适合你想和 Codex 交互式地做这些事：
+
+- 修改研究画像
+- 临时抓一批论文
+- 单独分析一篇论文
+- 生成某天的报告
+
+### 如何安装成 Codex Skill
+
+如果你想让这些 skills 在别的项目里也能直接用，推荐安装到：
+
+```bash
+~/.codex/skills/
+```
+
+例如用软链接安装：
+
+```bash
+mkdir -p ~/.codex/skills
+ln -s /path/to/AutoResearch/skills/research-interest-profile ~/.codex/skills/research-interest-profile
+ln -s /path/to/AutoResearch/skills/paper-intake-and-normalize ~/.codex/skills/paper-intake-and-normalize
+ln -s /path/to/AutoResearch/skills/problem-solution-extractor ~/.codex/skills/problem-solution-extractor
+ln -s /path/to/AutoResearch/skills/report-composer ~/.codex/skills/report-composer
+```
+
+如果不想用软链接，也可以直接复制这些目录。
+
+安装后，如果你的 Codex 环境不会自动刷新 skills，需要重启一次 Codex。
+
+### 该选哪一种方式
+
+- 如果你要每天自动跑，用 **使用方法一**
+- 如果你要和 Codex 交互式逐篇分析，用 **使用方法二**
 
 ---
 
