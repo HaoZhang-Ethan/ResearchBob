@@ -8,7 +8,10 @@ def run() -> int:
     root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(root / "src"))
 
+    from auto_research.env import load_env_file
     from auto_research.automation import PipelineConfig, run_daily_pipeline
+
+    load_env_file(root / ".env.local")
 
     result = run_daily_pipeline(
         PipelineConfig(

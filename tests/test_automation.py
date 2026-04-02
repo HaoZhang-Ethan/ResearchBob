@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from auto_research.automation import PipelineConfig, run_daily_pipeline
 from auto_research.models import RegistryEntry
-from auto_research.openai_client import SummaryArtifact
+from auto_research.openai_client import OpenAIResponsesClient, SummaryArtifact
 
 
 class FakeLLMClient:
@@ -27,6 +27,15 @@ class FakeLLMClient:
             relevance_to_profile="Relevant.",
             analyst_notes="Worth reading.",
         )
+
+
+def test_openai_client_uses_env_base_url(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://example.test:8080")
+
+    client = OpenAIResponsesClient(client=object())
+
+    assert client._base_url == "http://example.test:8080/responses"
 
 
 def test_run_daily_pipeline_writes_report_and_ris(tmp_path, monkeypatch) -> None:

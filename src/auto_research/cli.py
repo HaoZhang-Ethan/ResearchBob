@@ -8,6 +8,7 @@ from typing import Sequence
 
 import httpx
 
+from auto_research.env import load_env_file
 from auto_research.extraction import validate_extraction_document
 from auto_research.intake import IntakeDataError, IntakeProfileError, run_intake
 from auto_research.profile import validate_interest_profile_text
@@ -66,6 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    load_env_file(Path.cwd() / ".env.local")
     raw_argv = _raw_argv(argv)
     parser = build_parser()
     args = parser.parse_args(raw_argv)

@@ -43,20 +43,58 @@ def _extract_text(response_json: dict) -> str:
     return text
 
 
+def _extract_text_from_sse(response_text: str) -> str:
+    deltas: list[str] = []
+
+    for raw_line in response_text.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("data: "):
+            continue
+        payload_text = line[6:].strip()
+        if not payload_text or payload_text == "[DONE]":
+            continue
+        try:
+            payload = json.loads(payload_text)
+        except json.JSONDecodeError:
+            continue
+        if payload.get("type") == "response.output_text.delta":
+            delta = payload.get("delta")
+            if isinstance(delta, str):
+                deltas.append(delta)
+
+    text = "".join(deltas).strip()
+    if not text:
+        raise OpenAIClientError("OpenAI SSE response did not contain output text deltas")
+    return text
+
+
+def _normalize_base_url(value: str) -> str:
+    stripped = value.rstrip("/")
+    if stripped.endswith("/responses"):
+        return stripped
+    return f"{stripped}/responses"
+
+
 class OpenAIResponsesClient:
     def __init__(
         self,
         *,
         api_key: str | None = None,
         model: str | None = None,
-        base_url: str = "https://api.openai.com/v1/responses",
+        base_url: str | None = None,
         client: httpx.Client | None = None,
     ) -> None:
         self._api_key = api_key or os.environ.get("OPENAI_API_KEY")
         if not self._api_key:
             raise OpenAIClientError("OPENAI_API_KEY is not set")
         self._model = model or os.environ.get("AUTO_RESEARCH_MODEL", "gpt-5.2")
-        self._base_url = base_url
+        configured_base_url = (
+            base_url
+            or os.environ.get("OPENAI_BASE_URL")
+            or os.environ.get("OPENAI_API_BASE")
+            or "https://api.openai.com/v1/responses"
+        )
+        self._base_url = _normalize_base_url(configured_base_url)
         self._client = client or httpx.Client(timeout=60.0)
 
     def _request(self, *, instructions: str, input_payload: str, schema: dict) -> dict:
@@ -69,7 +107,17 @@ class OpenAIResponsesClient:
             json={
                 "model": self._model,
                 "instructions": instructions,
-                "input": input_payload,
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": input_payload,
+                            }
+                        ],
+                    }
+                ],
                 "text": {
                     "format": {
                         "type": "json_schema",
@@ -81,7 +129,11 @@ class OpenAIResponsesClient:
             },
         )
         response.raise_for_status()
-        text = _extract_text(response.json())
+        content_type = response.headers.get("content-type", "")
+        if "text/event-stream" in content_type or response.text.lstrip().startswith("event:"):
+            text = _extract_text_from_sse(response.text)
+        else:
+            text = _extract_text(response.json())
         try:
             return json.loads(text)
         except json.JSONDecodeError as exc:

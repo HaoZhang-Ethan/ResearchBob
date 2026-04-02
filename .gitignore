@@ -1,4 +1,5 @@
 .worktrees/
+.env.local
 .pytest_cache/
 .ruff_cache/
 .venv/

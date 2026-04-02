@@ -121,7 +121,7 @@ def _write_summary_if_needed(
 
 def _stage_commit_push(workspace: Path, label: str) -> None:
     repo_root = workspace.parent if workspace.name == "research-workspace" else Path.cwd()
-    subprocess.run(["git", "add", str(workspace)], cwd=repo_root, check=True)
+    subprocess.run(["git", "add", "-f", str(workspace)], cwd=repo_root, check=True)
     status = subprocess.run(
         ["git", "diff", "--cached", "--quiet"],
         cwd=repo_root,
