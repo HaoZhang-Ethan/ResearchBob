@@ -367,3 +367,104 @@ class OpenAIResponsesClient:
             input_payload=payload,
             schema=schema,
         )
+
+    def summarize_daily_findings(
+        self,
+        *,
+        profile: InterestProfile,
+        analyses: list[dict[str, str]],
+        failed_items: list[str],
+    ) -> dict[str, object]:
+        schema = {
+            "name": "daily_summary",
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "headline": {"type": "string"},
+                    "top_takeaways": {"type": "array", "items": {"type": "string"}},
+                    "good_problem_weak_solution": {"type": "array", "items": {"type": "string"}},
+                    "worth_further_thought": {"type": "array", "items": {"type": "string"}},
+                    "failed_or_retry": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": [
+                    "headline",
+                    "top_takeaways",
+                    "good_problem_weak_solution",
+                    "worth_further_thought",
+                    "failed_or_retry",
+                ],
+            },
+        }
+        payload = json.dumps(
+            {
+                "profile": {
+                    "core_interests": profile.core_interests,
+                    "soft_boundaries": profile.soft_boundaries,
+                    "current_phase_bias": profile.current_phase_bias,
+                    "evaluation_heuristics": profile.evaluation_heuristics,
+                },
+                "analyses": analyses,
+                "failed_items": failed_items,
+                "task": (
+                    "Summarize today's analyzed papers for idea discovery. "
+                    "Highlight good problems, weak solutions, and papers worth further thought."
+                ),
+            },
+            ensure_ascii=False,
+        )
+        return self._request(
+            instructions=(
+                "You are producing a daily research-idea summary. "
+                "Be concise, selective, and oriented toward idea discovery."
+            ),
+            input_payload=payload,
+            schema=schema,
+        )
+
+    def update_longterm_findings(
+        self,
+        *,
+        profile: InterestProfile,
+        previous_summary: str,
+        analyses: list[dict[str, str]],
+        daily_summary: dict[str, object],
+    ) -> str:
+        schema = {
+            "name": "longterm_summary",
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "markdown": {"type": "string"},
+                },
+                "required": ["markdown"],
+            },
+        }
+        payload = json.dumps(
+            {
+                "profile": {
+                    "core_interests": profile.core_interests,
+                    "soft_boundaries": profile.soft_boundaries,
+                    "current_phase_bias": profile.current_phase_bias,
+                    "evaluation_heuristics": profile.evaluation_heuristics,
+                },
+                "previous_summary": previous_summary,
+                "analyses": analyses,
+                "daily_summary": daily_summary,
+                "task": (
+                    "Update a rolling long-term summary organized by recurring problem clusters, "
+                    "common weaknesses in existing solutions, and the most promising directions."
+                ),
+            },
+            ensure_ascii=False,
+        )
+        data = self._request(
+            instructions=(
+                "You maintain a long-term research summary. "
+                "Keep it compact, cumulative, and organized by themes and recurring gaps."
+            ),
+            input_payload=payload,
+            schema=schema,
+        )
+        return data["markdown"]

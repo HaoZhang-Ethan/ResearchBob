@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import subprocess
 from dataclasses import dataclass
 from datetime import date
@@ -16,6 +17,7 @@ from auto_research.profile import load_interest_profile
 from auto_research.report import compose_report
 from auto_research.ris import export_ris
 from auto_research.selection import RankedCandidate, prefilter_candidates
+from auto_research.summary import load_detailed_analysis_texts, write_daily_summary
 from auto_research.state import PaperState, update_paper_state
 from auto_research.workspace import ensure_workspace
 from auto_research.longterm import update_longterm_summary
@@ -38,6 +40,7 @@ class PipelineConfig:
 class PipelineResult:
     selected_entries: list[RegistryEntry]
     report_path: Path
+    daily_summary_path: Path
     ris_path: Path
     longterm_summary_path: Path
 
@@ -224,6 +227,18 @@ def _stage_commit_push(workspace: Path, label: str) -> None:
     subprocess.run(["git", "push"], cwd=repo_root, check=True)
 
 
+def _failed_items(workspace: Path, selected_entries: list[RegistryEntry]) -> list[str]:
+    failed: list[str] = []
+    for entry in selected_entries:
+        state_path = _state_path(workspace, entry)
+        if not state_path.exists():
+            continue
+        state = PaperState(**json.loads(state_path.read_text(encoding="utf-8")))
+        if state.status in {"pdf_failed", "analysis_failed", "needs_retry"}:
+            failed.append(f"{entry.title}: {state.status} - {state.last_error}".strip())
+    return failed
+
+
 def run_daily_pipeline(
     config: PipelineConfig,
     *,
@@ -264,11 +279,35 @@ def run_daily_pipeline(
                 )
 
     report_path = compose_report(workspace=workspace, mode="daily", label=label)
+    analyses = load_detailed_analysis_texts(workspace, selected_entries)
+    failed_items = _failed_items(workspace, selected_entries)
+    client_for_summary = llm_client or OpenAIResponsesClient(model=config.model)
+    daily_summary_payload = client_for_summary.summarize_daily_findings(
+        profile=profile,
+        analyses=analyses,
+        failed_items=failed_items,
+    )
+    daily_summary_path = write_daily_summary(
+        path=workspace / "reports" / "daily" / f"{label}-summary.md",
+        label=label,
+        payload=daily_summary_payload,
+    )
+    previous_longterm = ""
+    longterm_path = workspace / "reports" / "longterm" / "longterm-summary.md"
+    if longterm_path.exists():
+        previous_longterm = longterm_path.read_text(encoding="utf-8")
+    generated_longterm = client_for_summary.update_longterm_findings(
+        profile=profile,
+        previous_summary=previous_longterm,
+        analyses=analyses,
+        daily_summary=daily_summary_payload,
+    )
     longterm_summary_path = update_longterm_summary(
-        path=workspace / "reports" / "longterm" / "longterm-summary.md",
+        path=longterm_path,
         daily_report_path=report_path,
         selected_titles=[entry.title for entry in selected_entries],
         selected_summaries=[entry.summary for entry in selected_entries],
+        generated_summary=generated_longterm,
     )
     ris_path = export_ris(selected_entries, workspace / "exports" / "zotero" / f"{label}.ris")
 
@@ -278,6 +317,7 @@ def run_daily_pipeline(
     return PipelineResult(
         selected_entries=selected_entries,
         report_path=report_path,
+        daily_summary_path=daily_summary_path,
         ris_path=ris_path,
         longterm_summary_path=longterm_summary_path,
     )

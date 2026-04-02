@@ -28,6 +28,32 @@ class FakeLLMClient:
             analyst_notes="Worth reading.",
         )
 
+    def detailed_analyze_paper(self, *, profile, entry, pdf_text):
+        return {
+            "one_paragraph_summary": "Detailed summary.",
+            "problem": "Detailed problem.",
+            "solution": "Detailed solution.",
+            "key_mechanism": "Detailed mechanism.",
+            "assumptions": "Detailed assumptions.",
+            "strengths": "Detailed strengths.",
+            "weaknesses": "Detailed weaknesses.",
+            "what_is_missing": "Detailed missing.",
+            "why_it_matters": "Detailed relevance.",
+            "follow_up_ideas": "Detailed follow-up.",
+        }
+
+    def summarize_daily_findings(self, *, profile, analyses, failed_items):
+        return {
+            "headline": "Interesting NPU compiler papers today.",
+            "top_takeaways": ["Fusion and scheduling remain tightly coupled."],
+            "good_problem_weak_solution": ["Some papers expose good operator problems."],
+            "worth_further_thought": ["Consider a schedule-aware fusion cost model."],
+            "failed_or_retry": failed_items,
+        }
+
+    def update_longterm_findings(self, *, profile, previous_summary, analyses, daily_summary):
+        return "# Rolling Themes\n\n- Operator fusion remains central.\n"
+
 
 def test_openai_client_uses_env_base_url(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -119,11 +145,15 @@ def test_run_daily_pipeline_writes_report_and_ris(tmp_path, monkeypatch) -> None
     assert detailed_path.exists()
     assert state_path.exists()
     assert result.report_path == workspace / "reports" / "daily" / "2026-04-02.md"
+    assert result.daily_summary_path == workspace / "reports" / "daily" / "2026-04-02-summary.md"
     assert result.longterm_summary_path == workspace / "reports" / "longterm" / "longterm-summary.md"
     assert result.ris_path == workspace / "exports" / "zotero" / "2026-04-02.ris"
     ris_text = result.ris_path.read_text(encoding="utf-8")
     assert "TY  - UNPB" in ris_text
     assert "AscendOptimizer" in ris_text
+    assert result.daily_summary_path.exists()
+    assert "Interesting NPU compiler papers today." in result.daily_summary_path.read_text(encoding="utf-8")
+    assert "Rolling Themes" in result.longterm_summary_path.read_text(encoding="utf-8")
 
 
 def test_run_daily_pipeline_respects_existing_summary(tmp_path, monkeypatch) -> None:
@@ -208,25 +238,6 @@ Existing
         "auto_research.automation.download_pdf",
         lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
     )
-    monkeypatch.setattr(
-        "auto_research.automation.build_detailed_analysis",
-        lambda **kwargs: (
-            "Example extracted PDF text",
-            {
-                "one_paragraph_summary": "Detailed summary.",
-                "problem": "Detailed problem.",
-                "solution": "Detailed solution.",
-                "key_mechanism": "Detailed mechanism.",
-                "assumptions": "Detailed assumptions.",
-                "strengths": "Detailed strengths.",
-                "weaknesses": "Detailed weaknesses.",
-                "what_is_missing": "Detailed missing.",
-                "why_it_matters": "Detailed relevance.",
-                "follow_up_ideas": "Detailed follow-up.",
-            },
-        ),
-    )
-
     result = run_daily_pipeline(
         PipelineConfig(
             workspace=workspace,
@@ -290,25 +301,6 @@ def test_run_daily_pipeline_backfills_manual_pdf(tmp_path, monkeypatch) -> None:
         "auto_research.automation.download_pdf",
         lambda **kwargs: (_ for _ in ()).throw(AssertionError("download should not be called")),
     )
-    monkeypatch.setattr(
-        "auto_research.automation.build_detailed_analysis",
-        lambda **kwargs: (
-            "Manual PDF text",
-            {
-                "one_paragraph_summary": "Detailed summary.",
-                "problem": "Detailed problem.",
-                "solution": "Detailed solution.",
-                "key_mechanism": "Detailed mechanism.",
-                "assumptions": "Detailed assumptions.",
-                "strengths": "Detailed strengths.",
-                "weaknesses": "Detailed weaknesses.",
-                "what_is_missing": "Detailed missing.",
-                "why_it_matters": "Detailed relevance.",
-                "follow_up_ideas": "Detailed follow-up.",
-            },
-        ),
-    )
-
     result = run_daily_pipeline(
         PipelineConfig(
             workspace=workspace,

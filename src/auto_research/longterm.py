@@ -9,6 +9,7 @@ def update_longterm_summary(
     daily_report_path: Path,
     selected_titles: list[str],
     selected_summaries: list[str] | None = None,
+    generated_summary: str | None = None,
 ) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     previous = ""
@@ -41,6 +42,9 @@ def update_longterm_summary(
             ]
         )
         lines.extend(f"- {summary}" for summary in selected_summaries)
+
+    if generated_summary:
+        lines.extend(["", "## Current Rolling Summary", generated_summary])
 
     if previous:
         lines.extend(["", "## Previous Snapshot", previous])
