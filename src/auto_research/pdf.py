@@ -6,8 +6,21 @@ import httpx
 
 
 def download_pdf(*, client: httpx.Client, url: str, destination: Path) -> Path:
-    response = client.get(url)
-    response.raise_for_status()
+    last_error: Exception | None = None
+    response: httpx.Response | None = None
+    for _ in range(3):
+        try:
+            response = client.get(url)
+            response.raise_for_status()
+            break
+        except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.ConnectError, httpx.RemoteProtocolError) as exc:
+            last_error = exc
+            continue
+    else:
+        assert last_error is not None
+        raise last_error
+
+    assert response is not None
     content_type = response.headers.get("content-type", "").lower()
     if "pdf" not in content_type and not url.lower().endswith(".pdf"):
         raise ValueError(f"URL did not return a PDF-like response: {url}")

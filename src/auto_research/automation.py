@@ -152,6 +152,7 @@ def _download_pdf_if_needed(*, workspace: Path, entry: RegistryEntry) -> Path | 
             status="pdf_downloaded",
             last_attempt_at=utc_now_iso(),
             last_error="",
+            failure_kind="",
             source_updated_at=entry.updated_at,
         )
         return output_path
@@ -165,6 +166,7 @@ def _download_pdf_if_needed(*, workspace: Path, entry: RegistryEntry) -> Path | 
             status="pdf_failed",
             last_attempt_at=utc_now_iso(),
             last_error=str(exc),
+            failure_kind=type(exc).__name__,
             source_updated_at=entry.updated_at,
         )
         return None
@@ -174,6 +176,7 @@ def _download_pdf_if_needed(*, workspace: Path, entry: RegistryEntry) -> Path | 
         status="pdf_downloaded",
         last_attempt_at=utc_now_iso(),
         last_error="",
+        failure_kind="",
         source_updated_at=entry.updated_at,
     )
     return output_path
@@ -197,6 +200,7 @@ def _write_detailed_analysis_if_needed(
             status="analysis_done",
             last_attempt_at=utc_now_iso(),
             last_error="",
+            failure_kind="",
             source_updated_at=entry.updated_at,
         )
         return output_path
@@ -207,6 +211,7 @@ def _write_detailed_analysis_if_needed(
             status="needs_retry",
             last_attempt_at=utc_now_iso(),
             last_error="PDF missing",
+            failure_kind="missing_pdf",
             source_updated_at=entry.updated_at,
         )
         return None
@@ -224,6 +229,7 @@ def _write_detailed_analysis_if_needed(
             status="analysis_failed",
             last_attempt_at=utc_now_iso(),
             last_error=str(exc),
+            failure_kind=type(exc).__name__,
             source_updated_at=entry.updated_at,
         )
         return None
@@ -240,6 +246,7 @@ def _write_detailed_analysis_if_needed(
         status="analysis_done",
         last_attempt_at=utc_now_iso(),
         last_error="",
+        failure_kind="",
         source_updated_at=entry.updated_at,
     )
     return output_path

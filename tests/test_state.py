@@ -14,6 +14,7 @@ def test_write_and_reload_paper_state(tmp_path) -> None:
         status="pdf_downloaded",
         last_attempt_at="2026-04-02T00:00:00Z",
         last_error="",
+        failure_kind="",
         analysis_version=2,
         source_updated_at="2026-04-02T00:00:00Z",
     )
@@ -25,7 +26,8 @@ def test_write_and_reload_paper_state(tmp_path) -> None:
 def test_update_paper_state_overwrites_selected_fields(tmp_path) -> None:
     path = tmp_path / "state.json"
     write_paper_state(path, PaperState())
-    updated = update_paper_state(path, status="analysis_failed", last_error="boom")
+    updated = update_paper_state(path, status="analysis_failed", last_error="boom", failure_kind="ValueError")
     assert updated.status == "analysis_failed"
     assert updated.last_error == "boom"
+    assert updated.failure_kind == "ValueError"
     assert updated.analysis_version == 1

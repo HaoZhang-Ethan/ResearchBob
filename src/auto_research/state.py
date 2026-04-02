@@ -22,6 +22,7 @@ class PaperState:
     status: str = DEFAULT_STATUS
     last_attempt_at: str = ""
     last_error: str = ""
+    failure_kind: str = ""
     analysis_version: int = 1
     source_updated_at: str = ""
 
@@ -40,6 +41,7 @@ def load_paper_state(path: Path) -> PaperState:
         status=str(payload.get("status", DEFAULT_STATUS)),
         last_attempt_at=str(payload.get("last_attempt_at", "")),
         last_error=str(payload.get("last_error", "")),
+        failure_kind=str(payload.get("failure_kind", "")),
         analysis_version=int(payload.get("analysis_version", 1)),
         source_updated_at=str(payload.get("source_updated_at", "")),
     )

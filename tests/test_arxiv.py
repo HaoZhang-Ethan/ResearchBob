@@ -71,6 +71,22 @@ def test_arxiv_client_requests_submitted_date_sorting() -> None:
     assert seen_params["sortOrder"] == "descending"
 
 
+def test_arxiv_client_retries_on_transient_timeout() -> None:
+    attempts = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise httpx.ReadTimeout("slow")
+        return httpx.Response(200, text=FIXTURE_XML)
+
+    client = ArxivClient(httpx.Client(transport=httpx.MockTransport(handler)), "https://example.test/api/query")
+    entries = client.fetch_recent("distributed systems", max_results=2)
+
+    assert attempts["count"] == 3
+    assert [entry.arxiv_id for entry in entries] == ["2501.00001v1", "2501.00002v1"]
+
+
 def test_arxiv_client_parses_legacy_slash_style_id() -> None:
     xml_text = """<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">

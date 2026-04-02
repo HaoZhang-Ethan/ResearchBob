@@ -29,19 +29,28 @@ class ArxivClient:
         else:
             self._client = client
         self._endpoint = endpoint or "https://export.arxiv.org/api/query"
+        self._max_retries = 3
 
     def fetch_recent(self, query: str, max_results: int = 25) -> list[RegistryEntry]:
-        response = self._client.get(
-            self._endpoint,
-            params={
-                "search_query": query,
-                "start": 0,
-                "max_results": max_results,
-                "sortBy": "submittedDate",
-                "sortOrder": "descending",
-            },
-        )
-        response.raise_for_status()
+        params = {
+            "search_query": query,
+            "start": 0,
+            "max_results": max_results,
+            "sortBy": "submittedDate",
+            "sortOrder": "descending",
+        }
+        last_error: Exception | None = None
+        for _ in range(self._max_retries):
+            try:
+                response = self._client.get(self._endpoint, params=params)
+                response.raise_for_status()
+                break
+            except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.ConnectError, httpx.RemoteProtocolError) as exc:
+                last_error = exc
+                continue
+        else:
+            assert last_error is not None
+            raise last_error
         return self._parse_feed(response.text)
 
     def _parse_feed(self, xml_text: str) -> list[RegistryEntry]:
