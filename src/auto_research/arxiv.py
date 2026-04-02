@@ -28,7 +28,7 @@ class ArxivClient:
                 ) from None
         else:
             self._client = client
-        self._endpoint = endpoint or "http://export.arxiv.org/api/query"
+        self._endpoint = endpoint or "https://export.arxiv.org/api/query"
 
     def fetch_recent(self, query: str, max_results: int = 25) -> list[RegistryEntry]:
         response = self._client.get(
