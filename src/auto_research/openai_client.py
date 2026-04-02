@@ -385,6 +385,7 @@ class OpenAIResponsesClient:
                     "top_takeaways": {"type": "array", "items": {"type": "string"}},
                     "good_problem_weak_solution": {"type": "array", "items": {"type": "string"}},
                     "worth_further_thought": {"type": "array", "items": {"type": "string"}},
+                    "recurring_themes": {"type": "array", "items": {"type": "string"}},
                     "failed_or_retry": {"type": "array", "items": {"type": "string"}},
                 },
                 "required": [
@@ -392,6 +393,7 @@ class OpenAIResponsesClient:
                     "top_takeaways",
                     "good_problem_weak_solution",
                     "worth_further_thought",
+                    "recurring_themes",
                     "failed_or_retry",
                 ],
             },
@@ -408,7 +410,7 @@ class OpenAIResponsesClient:
                 "failed_items": failed_items,
                 "task": (
                     "Summarize today's analyzed papers for idea discovery. "
-                    "Highlight good problems, weak solutions, and papers worth further thought."
+                    "Highlight good problems, weak solutions, recurring themes, and papers worth further thought."
                 ),
             },
             ensure_ascii=False,
@@ -416,7 +418,8 @@ class OpenAIResponsesClient:
         return self._request(
             instructions=(
                 "You are producing a daily research-idea summary. "
-                "Be concise, selective, and oriented toward idea discovery."
+                "Be concise, selective, and oriented toward idea discovery. "
+                "Explicitly identify recurring themes across today's papers."
             ),
             input_payload=payload,
             schema=schema,
@@ -462,7 +465,7 @@ class OpenAIResponsesClient:
         data = self._request(
             instructions=(
                 "You maintain a long-term research summary. "
-                "Keep it compact, cumulative, and organized by themes and recurring gaps."
+                "Keep it compact, cumulative, and organized by problem clusters, recurring gaps, and the most promising directions."
             ),
             input_payload=payload,
             schema=schema,

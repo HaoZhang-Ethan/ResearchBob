@@ -18,7 +18,7 @@ from auto_research.report import compose_report
 from auto_research.ris import export_ris
 from auto_research.selection import RankedCandidate, prefilter_candidates
 from auto_research.summary import load_detailed_analysis_texts, write_daily_summary
-from auto_research.state import PaperState, update_paper_state
+from auto_research.state import PaperState, load_paper_state, update_paper_state, utc_now_iso
 from auto_research.workspace import ensure_workspace
 from auto_research.longterm import update_longterm_summary
 
@@ -41,8 +41,10 @@ class PipelineResult:
     selected_entries: list[RegistryEntry]
     report_path: Path
     daily_summary_path: Path
+    bundle_path: Path
     ris_path: Path
     longterm_summary_path: Path
+    history_path: Path
 
 
 def _default_label() -> str:
@@ -145,7 +147,13 @@ def _download_pdf_if_needed(*, workspace: Path, entry: RegistryEntry) -> Path | 
     output_path = _pdf_path(workspace, entry)
     state_path = _state_path(workspace, entry)
     if output_path.exists():
-        update_paper_state(state_path, status="pdf_downloaded", last_error="")
+        update_paper_state(
+            state_path,
+            status="pdf_downloaded",
+            last_attempt_at=utc_now_iso(),
+            last_error="",
+            source_updated_at=entry.updated_at,
+        )
         return output_path
 
     try:
@@ -155,11 +163,19 @@ def _download_pdf_if_needed(*, workspace: Path, entry: RegistryEntry) -> Path | 
         update_paper_state(
             state_path,
             status="pdf_failed",
+            last_attempt_at=utc_now_iso(),
             last_error=str(exc),
+            source_updated_at=entry.updated_at,
         )
         return None
 
-    update_paper_state(state_path, status="pdf_downloaded", last_error="")
+    update_paper_state(
+        state_path,
+        status="pdf_downloaded",
+        last_attempt_at=utc_now_iso(),
+        last_error="",
+        source_updated_at=entry.updated_at,
+    )
     return output_path
 
 
@@ -176,11 +192,23 @@ def _write_detailed_analysis_if_needed(
     pdf_path = _pdf_path(workspace, entry)
 
     if output_path.exists():
-        update_paper_state(state_path, status="analysis_done", last_error="")
+        update_paper_state(
+            state_path,
+            status="analysis_done",
+            last_attempt_at=utc_now_iso(),
+            last_error="",
+            source_updated_at=entry.updated_at,
+        )
         return output_path
 
     if not pdf_path.exists():
-        update_paper_state(state_path, status="needs_retry", last_error="PDF missing")
+        update_paper_state(
+            state_path,
+            status="needs_retry",
+            last_attempt_at=utc_now_iso(),
+            last_error="PDF missing",
+            source_updated_at=entry.updated_at,
+        )
         return None
 
     try:
@@ -194,7 +222,9 @@ def _write_detailed_analysis_if_needed(
         update_paper_state(
             state_path,
             status="analysis_failed",
+            last_attempt_at=utc_now_iso(),
             last_error=str(exc),
+            source_updated_at=entry.updated_at,
         )
         return None
 
@@ -205,7 +235,13 @@ def _write_detailed_analysis_if_needed(
         detailed_sections=sections,
     )
     output_path.write_text(markdown, encoding="utf-8")
-    update_paper_state(state_path, status="analysis_done", last_error="")
+    update_paper_state(
+        state_path,
+        status="analysis_done",
+        last_attempt_at=utc_now_iso(),
+        last_error="",
+        source_updated_at=entry.updated_at,
+    )
     return output_path
 
 
@@ -233,10 +269,73 @@ def _failed_items(workspace: Path, selected_entries: list[RegistryEntry]) -> lis
         state_path = _state_path(workspace, entry)
         if not state_path.exists():
             continue
-        state = PaperState(**json.loads(state_path.read_text(encoding="utf-8")))
+        state = load_paper_state(state_path)
         if state.status in {"pdf_failed", "analysis_failed", "needs_retry"}:
             failed.append(f"{entry.title}: {state.status} - {state.last_error}".strip())
     return failed
+
+
+def _write_daily_bundle(
+    *,
+    workspace: Path,
+    label: str,
+    selected_entries: list[RegistryEntry],
+    failed_items: list[str],
+) -> Path:
+    bundle_path = workspace / "reports" / "daily" / f"{label}-bundle.json"
+    bundle_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "label": label,
+        "selected_papers": [
+            {
+                "paper_id": entry.arxiv_id,
+                "title": entry.title,
+                "paper_dir": str(workspace / "papers" / entry.stable_id.replace("/", "_")),
+                "pdf_path": str(_pdf_path(workspace, entry)),
+                "summary_path": str(_problem_solution_path(workspace, entry)),
+                "analysis_path": str(_detailed_analysis_path(workspace, entry)),
+                "state_path": str(_state_path(workspace, entry)),
+            }
+            for entry in selected_entries
+        ],
+        "failed_or_retry": failed_items,
+    }
+    bundle_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return bundle_path
+
+
+def _append_run_history(
+    *,
+    workspace: Path,
+    label: str,
+    selected_entries: list[RegistryEntry],
+    failed_items: list[str],
+    report_path: Path,
+    daily_summary_path: Path,
+    bundle_path: Path,
+    longterm_summary_path: Path,
+    ris_path: Path,
+) -> Path:
+    history_path = workspace / "pipeline" / "run-history.jsonl"
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "label": label,
+        "created_at": utc_now_iso(),
+        "selected_count": len(selected_entries),
+        "failed_count": len(failed_items),
+        "selected_ids": [entry.arxiv_id for entry in selected_entries],
+        "failed_items": failed_items,
+        "report_path": str(report_path),
+        "daily_summary_path": str(daily_summary_path),
+        "bundle_path": str(bundle_path),
+        "longterm_summary_path": str(longterm_summary_path),
+        "ris_path": str(ris_path),
+    }
+    existing = ""
+    if history_path.exists():
+        existing = history_path.read_text(encoding="utf-8")
+    history_path.write_text(existing + json.dumps(record, ensure_ascii=False) + "\n", encoding="utf-8")
+    return history_path
 
 
 def run_daily_pipeline(
@@ -309,7 +408,24 @@ def run_daily_pipeline(
         selected_summaries=[entry.summary for entry in selected_entries],
         generated_summary=generated_longterm,
     )
+    bundle_path = _write_daily_bundle(
+        workspace=workspace,
+        label=label,
+        selected_entries=selected_entries,
+        failed_items=failed_items,
+    )
     ris_path = export_ris(selected_entries, workspace / "exports" / "zotero" / f"{label}.ris")
+    history_path = _append_run_history(
+        workspace=workspace,
+        label=label,
+        selected_entries=selected_entries,
+        failed_items=failed_items,
+        report_path=report_path,
+        daily_summary_path=daily_summary_path,
+        bundle_path=bundle_path,
+        longterm_summary_path=longterm_summary_path,
+        ris_path=ris_path,
+    )
 
     if config.push:
         _stage_commit_push(workspace, label)
@@ -318,6 +434,8 @@ def run_daily_pipeline(
         selected_entries=selected_entries,
         report_path=report_path,
         daily_summary_path=daily_summary_path,
+        bundle_path=bundle_path,
         ris_path=ris_path,
         longterm_summary_path=longterm_summary_path,
+        history_path=history_path,
     )

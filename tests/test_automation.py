@@ -48,6 +48,7 @@ class FakeLLMClient:
             "top_takeaways": ["Fusion and scheduling remain tightly coupled."],
             "good_problem_weak_solution": ["Some papers expose good operator problems."],
             "worth_further_thought": ["Consider a schedule-aware fusion cost model."],
+            "recurring_themes": ["Operator fusion and scheduling co-dependence."],
             "failed_or_retry": failed_items,
         }
 
@@ -146,14 +147,21 @@ def test_run_daily_pipeline_writes_report_and_ris(tmp_path, monkeypatch) -> None
     assert state_path.exists()
     assert result.report_path == workspace / "reports" / "daily" / "2026-04-02.md"
     assert result.daily_summary_path == workspace / "reports" / "daily" / "2026-04-02-summary.md"
+    assert result.bundle_path == workspace / "reports" / "daily" / "2026-04-02-bundle.json"
     assert result.longterm_summary_path == workspace / "reports" / "longterm" / "longterm-summary.md"
     assert result.ris_path == workspace / "exports" / "zotero" / "2026-04-02.ris"
+    assert result.history_path == workspace / "pipeline" / "run-history.jsonl"
     ris_text = result.ris_path.read_text(encoding="utf-8")
     assert "TY  - UNPB" in ris_text
     assert "AscendOptimizer" in ris_text
     assert result.daily_summary_path.exists()
+    assert result.bundle_path.exists()
+    assert result.history_path.exists()
     assert "Interesting NPU compiler papers today." in result.daily_summary_path.read_text(encoding="utf-8")
+    assert "Recurring Themes" in result.daily_summary_path.read_text(encoding="utf-8")
     assert "Rolling Themes" in result.longterm_summary_path.read_text(encoding="utf-8")
+    assert "2603.23566v1" in result.bundle_path.read_text(encoding="utf-8")
+    assert "selected_count" in result.history_path.read_text(encoding="utf-8")
 
 
 def test_run_daily_pipeline_respects_existing_summary(tmp_path, monkeypatch) -> None:

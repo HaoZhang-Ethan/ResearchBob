@@ -2,10 +2,19 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 
 DEFAULT_STATUS = "discovered"
+VALID_STATUSES = {
+    "discovered",
+    "pdf_downloaded",
+    "pdf_failed",
+    "analysis_done",
+    "analysis_failed",
+    "needs_retry",
+}
 
 
 @dataclass(slots=True)
@@ -17,19 +26,26 @@ class PaperState:
     source_updated_at: str = ""
 
 
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def load_paper_state(path: Path) -> PaperState:
     if not path.exists():
         return PaperState()
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("state.json must contain a JSON object")
-    return PaperState(
+    state = PaperState(
         status=str(payload.get("status", DEFAULT_STATUS)),
         last_attempt_at=str(payload.get("last_attempt_at", "")),
         last_error=str(payload.get("last_error", "")),
         analysis_version=int(payload.get("analysis_version", 1)),
         source_updated_at=str(payload.get("source_updated_at", "")),
     )
+    if state.status not in VALID_STATUSES:
+        raise ValueError(f"Unknown paper state status: {state.status}")
+    return state
 
 
 def write_paper_state(path: Path, state: PaperState) -> Path:
@@ -44,5 +60,7 @@ def update_paper_state(path: Path, **updates: object) -> PaperState:
         if not hasattr(state, key):
             raise ValueError(f"Unknown state field: {key}")
         setattr(state, key, value)
+    if state.status not in VALID_STATUSES:
+        raise ValueError(f"Unknown paper state status: {state.status}")
     write_paper_state(path, state)
     return state
