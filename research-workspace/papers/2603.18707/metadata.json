@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2603.18707v1",
+  "title": "From ex(p) to poly: Gaussian Splatting with Polynomial Kernels",
+  "summary": "Recent advancements in Gaussian Splatting (3DGS) have introduced various modifications to the original kernel, resulting in significant performance improvements. However, many of these kernel changes are incompatible with existing datasets optimized for the original Gaussian kernel, presenting a challenge for widespread adoption. In this work, we address this challenge by proposing an alternative kernel that maintains compatibility with existing datasets while improving computational efficiency. Specifically, we replace the original exponential kernel with a polynomial approximation combined with a ReLU function. This modification allows for more aggressive culling of Gaussians, leading to enhanced performance across different 3DGS implementations. Our results show a notable performance improvement of 4 to 15% with negligible impact on image quality. We also provide a detailed mathematical analysis of the new kernel and discuss its potential benefits for 3DGS implementations on NPU hardware.",
+  "pdf_url": "https://arxiv.org/pdf/2603.18707v1",
+  "published_at": "2026-03-19T10:05:38Z",
+  "updated_at": "2026-03-19T10:05:38Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}

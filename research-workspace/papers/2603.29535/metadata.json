@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2603.29535v1",
+  "title": "Quantization with Unified Adaptive Distillation to enable multi-LoRA based one-for-all Generative Vision Models on edge",
+  "summary": "Generative Artificial Intelligence (GenAI) features such as image editing, object removal, and prompt-guided image transformation are increasingly integrated into mobile applications. However, deploying Large Vision Models (LVMs) for such tasks on resource-constrained devices remains challenging due to their high memory and compute requirements. While Low-Rank Adapters (LoRAs) enable parameter-efficient task adaptation, existing Mobile deployment pipelines typically compile separate model binaries for each LoRA + a copy of the foundation model, resulting in redundant storage and increased runtime overhead. In this work, we present a unified framework for enabling multi-task GenAI inference on edge devices using a single shared model. Our key idea is to treat LoRA weights as runtime inputs rather than embedding them into the compiled model graph, allowing dynamic task switching at runtime without recompilation. Then, to support efficient on-device execution, we introduce QUAD (Quantization with Unified Adaptive Distillation), a quantizationaware training strategy that aligns multiple LoRA adapters under a shared quantization profile. We implement the proposed system with a lightweight runtime stack compatible with mobile NPUs and evaluate it across multiple chipsets. Experimental results demonstrate up to 6x and 4x reduction in memory footprint and latency improvements, respectively, while maintaining high visual quality across multiple GenAI tasks.",
+  "pdf_url": "https://arxiv.org/pdf/2603.29535v1",
+  "published_at": "2026-03-31T10:17:07Z",
+  "updated_at": "2026-03-31T10:17:07Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}

@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2603.26835v3",
+  "title": "ANVIL: Accelerator-Native Video Interpolation via Codec Motion Vector Priors",
+  "summary": "Real-time 30-to-60 fps video frame interpolation on mobile neural processing units (NPUs) requires each synthesized frame within 33.3 ms. We show that mainstream flow-based video frame interpolation faces three structural deployment barriers on mobile NPUs: spatial sampling operators exceed the frame budget or lack hardware support, iterative flow refinement collapses under 8-bit integer post-training quantization, and memory-bound operators dominate the inference graph. ANVIL addresses these barriers by reusing motion vectors from the H.264/AVC decoder to prealign input frames, removing learned optical flow, spatial sampling, and iterative accumulation from the accelerator graph. The remaining residual is refined by a convolution-dominated network composed almost entirely of compute-bound operators. On a Snapdragon 8 Gen 3 device, ANVIL achieves 12.8 ms 1080p inference at 8-bit integer precision; an open-source Android player sustains 28.4 ms median end-to-end latency over 30-minute continuous playback. Per-operator causal analysis identifies quantized accumulation on recurrent flow states as a key mechanism behind integer quantization failure in iterative methods. The current design targets H.264/AVC playback with decoder-exposed motion vectors.",
+  "pdf_url": "https://arxiv.org/pdf/2603.26835v3",
+  "published_at": "2026-03-27T05:32:16Z",
+  "updated_at": "2026-04-01T02:09:58Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}

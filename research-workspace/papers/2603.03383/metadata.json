@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2603.03383v1",
+  "title": "Accelerating OpenPangu Inference on NPU via Speculative Decoding",
+  "summary": "To mitigate the Memory Wall bottleneck encountered by Large Language Models (LLMs) during inference on \\textbf{NPU} hardware, and addressing the scarcity of native support for mainstream speculative decoding algorithms on domestic infrastructure, this study presents an end-to-end speculative inference acceleration scheme for OpenPangu-7B.",
+  "pdf_url": "https://arxiv.org/pdf/2603.03383v1",
+  "published_at": "2026-03-03T06:50:31Z",
+  "updated_at": "2026-03-03T06:50:31Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}

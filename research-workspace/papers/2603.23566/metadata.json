@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2603.23566v1",
+  "title": "AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+  "summary": "AscendC (Ascend C) operator optimization on Huawei Ascend neural processing units (NPUs) faces a two-fold knowledge bottleneck: unlike the CUDA ecosystem, there are few public reference implementations to learn from, and performance hinges on a coupled two-part artifact - a host-side tiling program that orchestrates data movement and a kernel program that schedules and pipelines instructions. We present AscendOptimizer, an episodic agent that bootstraps this missing expertise by turning execution into experience. On the host side, AscendOptimizer performs profiling-in-the-loop evolutionary search to discover valid and high-performing tiling and data-movement configurations directly from hardware feedback. On the kernel side, it mines transferable optimization motifs by rewinding optimized kernels - systematically de-optimizing them to synthesize instructive \"bad-to-good\" trajectories - and distills these motifs into a retrievable experience bank for guided rewriting. By alternating host tuning and kernel rewriting in a closed loop, AscendOptimizer steadily expands feasibility and pushes latency down. On a benchmark of 127 real AscendC operators, AscendOptimizer achieves a 1.19x geometric-mean speedup over the open-source baseline, with 49.61% of operators outperforming their references, outperforming strong agent and search baselines.",
+  "pdf_url": "https://arxiv.org/pdf/2603.23566v1",
+  "published_at": "2026-03-24T08:54:53Z",
+  "updated_at": "2026-03-24T08:54:53Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}

@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2603.18771v1",
+  "title": "Empathetic Motion Generation for Humanoid Educational Robots via Reasoning-Guided Vision--Language--Motion Diffusion Architecture",
+  "summary": "This article suggests a reasoning-guided vision-language-motion diffusion framework (RG-VLMD) for generating instruction-aware co-speech gestures for humanoid robots in educational scenarios. The system integrates multi-modal affective estimation, pedagogical reasoning, and teaching-act-conditioned motion synthesis to enable adaptive and semantically consistent robot behavior. A gated mixture-of-experts model predicts Valence/Arousal from input text, visual, and acoustic features, which then mapped to discrete teaching-act categories through an affect-driven policy.These signals condition a diffusion-based motion generator using clip-level intent and frame-level instructional schedules via additive latent restriction with auxiliary action-group supervision. Compared to a baseline diffusion model, our proposed method produces more structured and distinctive motion patterns, as verified by motion statics and pairwise distance analysis. Generated motion sequences remain physically plausible and can be retargeted to a NAO robot for real-time execution. The results reveal that reasoning-guided instructional conditioning improves gesture controllability and pedagogical expressiveness in educational human-robot interaction.",
+  "pdf_url": "https://arxiv.org/pdf/2603.18771v1",
+  "published_at": "2026-03-19T11:26:04Z",
+  "updated_at": "2026-03-19T11:26:04Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}

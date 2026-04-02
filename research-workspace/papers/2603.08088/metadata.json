@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2603.08088v1",
+  "title": "EAGLE-Pangu: Accelerator-Safe Tree Speculative Decoding on Ascend NPUs",
+  "summary": "Autoregressive decoding remains a primary bottleneck in large language model (LLM) serving, motivating speculative decoding methods that reduce expensive teacher-model invocations by verifying multiple candidate tokens per step. Tree-structured speculation further increases parallelism, but is often brittle when ported across heterogeneous backends and accelerator stacks, where attention masking, KV-cache layouts, and indexing semantics are not interchangeable. We present EAGLE-Pangu, a reproducible system that ports EAGLE-3-style tree speculative decoding to a Pangu teacher backend on Ascend NPUs. EAGLE-Pangu contributes (i) an explicit branch/commit cache manager built on the Cache API, (ii) accelerator-safe tree tensorization that removes undefined negative indices by construction and validates structural invariants, and (iii) a fused-kernel-compatible teacher verification path with a debuggable eager fallback. On 240 turns from MT-Bench and HumanEval-style prompts, EAGLE-Pangu improves end-to-end decoding throughput by 1.27x on average, up to 2.46x at p99, over teacher-only greedy decoding in the fused-kernel performance path. We also provide a fused-kernel-free reference path with structured traces and invariant checks to support reproducible debugging and ablation across execution modes and tree budgets.",
+  "pdf_url": "https://arxiv.org/pdf/2603.08088v1",
+  "published_at": "2026-03-09T08:30:04Z",
+  "updated_at": "2026-03-09T08:30:04Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}

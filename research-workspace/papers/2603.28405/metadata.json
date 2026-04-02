@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2603.28405v1",
+  "title": "EdgeDiT: Hardware-Aware Diffusion Transformers for Efficient On-Device Image Generation",
+  "summary": "Diffusion Transformers (DiT) have established a new state-of-the-art in high-fidelity image synthesis; however, their massive computational complexity and memory requirements hinder local deployment on resource-constrained edge devices. In this paper, we introduce EdgeDiT, a family of hardware-efficient generative transformers specifically engineered for mobile Neural Processing Units (NPUs), such as the Qualcomm Hexagon and Apple Neural Engine (ANE). By leveraging a hardware-aware optimization framework, we systematically identify and prune structural redundancies within the DiT backbone that are particularly taxing for mobile data-flows. Our approach yields a series of lightweight models that achieve a 20-30% reduction in parameters, a 36-46% decrease in FLOPs, and a 1.65-fold reduction in on-device latency without sacrificing the scaling advantages or the expressive capacity of the original transformer architecture. Extensive benchmarking demonstrates that EdgeDiT offers a superior Pareto-optimal trade-off between Frechet Inception Distance (FID) and inference latency compared to both optimized mobile U-Nets and vanilla DiT variants. By enabling responsive, private, and offline generative AI directly on-device, EdgeDiT provides a scalable blueprint for transitioning large-scale foundation models from high-end GPUs to the palm of the user.",
+  "pdf_url": "https://arxiv.org/pdf/2603.28405v1",
+  "published_at": "2026-03-30T13:14:30Z",
+  "updated_at": "2026-03-30T13:14:30Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}

@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2603.20174v1",
+  "title": "TinyML Enhances CubeSat Mission Capabilities",
+  "summary": "Earth observation (EO) missions traditionally rely on transmitting raw or minimally processed imagery from satellites to ground stations for computationally intensive analysis. This paradigm is infeasible for CubeSat systems due to stringent constraints on the onboard embedded processors, energy availability, and communication bandwidth. To overcome these limitations, the paper presents a TinyML-based Convolutional Neural Networks (ConvNets) model optimization and deployment pipeline for onboard image classification, enabling accurate, energy-efficient, and hardware-aware inference under CubeSat-class constraints. Our pipeline integrates structured iterative pruning, post-training INT8 quantization, and hardware-aware operator mapping to compress models and align them with the heterogeneous compute architecture of the STM32N6 microcontroller from STMicroelectronics. This Microcontroller Unit (MCU) integrates a novel Arm Cortex-M55 core and a Neural-ART Neural Processing Unit (NPU), providing a realistic proxy for CubeSat onboard computers. The paper evaluates the proposed approach on three EO benchmark datasets (i.e., EuroSAT, RS_C11, MEDIC) and four models (i.e., SqueezeNet, MobileNetV3, EfficientNet, MCUNetV1). We demonstrate an average reduction in RAM usage of 89.55% and Flash memory of 70.09% for the optimized models, significantly decreasing downlink bandwidth requirements while maintaining task-acceptable accuracy (with a drop ranging from 0.4 to 8.6 percentage points compared to the Float32 baseline). The energy consumption per inference ranges from 0.68 mJ to 6.45 mJ, with latency spanning from 3.22 ms to 30.38 ms. These results fully satisfy the stringent energy budgets and real-time constraints required for efficient onboard EO processing.",
+  "pdf_url": "https://arxiv.org/pdf/2603.20174v1",
+  "published_at": "2026-03-20T17:51:07Z",
+  "updated_at": "2026-03-20T17:51:07Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}
