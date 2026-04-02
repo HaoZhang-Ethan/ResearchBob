@@ -1,12 +1,4 @@
 TY  - UNPB
-ID  - 2603.06728v1
-TI  - Orion: Characterizing and Programming Apple's Neural Engine for LLM Training and Inference
-AB  - Over two billion Apple devices ship with a Neural Processing Unit (NPU) - the Apple Neural Engine (ANE) - yet this accelerator remains largely unused for large language model workloads. CoreML, Apple's public ML framework, imposes opaque abstractions that prevent direct ANE programming and do not support on-device training. We present Orion, to our knowledge the first open end-to-end system that combines direct ANE execution, a compiler pipeline, and stable multi-step training with checkpoint resume in a single native runtime, bypassing CoreML entirely via Apple's private _ANEClient and _ANECompiler APIs. Building on prior characterization work by maderix, we extend public knowledge of ANE constraints to a catalog of 20 restrictions on MIL IR programs, memory layout, compilation limits, and numerical behavior, including 14 previously undocumented constraints discovered during Orion development. Orion includes a compiler that lowers a graph IR through five optimization passes to ANE-native MIL and a runtime that manages IOSurface-backed zero-copy tensor I/O, program caching, and delta compilation for weight updates. Because the ANE bakes weights at compile time, naive training normally requires full recompilation per step (~4.2 s). We show that compiled programs can instead be updated by unloading, patching weight files, and reloading, bypassing ANECCompile() and reducing recompilation from 4,200 ms to 494 ms per step (8.5x), yielding a 3.8x training speedup. On an M4 Max, Orion achieves 170+ tokens/s for GPT-2 124M inference and demonstrates stable training of a 110M-parameter transformer on TinyStories for 1,000 steps in 22 minutes with zero NaN occurrences. We also present LoRA adapter-as-input, enabling hot-swap of adapters via IOSurface inputs without recompilation.
-UR  - https://arxiv.org/pdf/2603.06728v1
-DA  - 2026-03-06
-ER  -
-
-TY  - UNPB
 ID  - 2603.24239v1
 TI  - DVM: Real-Time Kernel Generation for Dynamic AI Models
 AB  - Dynamism is common in AI computation, e.g., the dynamic tensor shapes and the dynamic control flows in models. Due to the long compilation time, existing runtime compilation damages the model efficiency, while the offline compilers either suffer from the long compilation time and device memory footprint to cover all the possible execution instances of a dynamic model, or sacrifice optimization opportunities for usability. In this paper, we rethink the feasibility of runtime compilation for dynamic models and identify that the key for it to work is to speed up the compilation or hide the compilation overhead. To do this, we propose a real-time compiler, DVM. In DVM, we design a runtime operator compiler based on a bytecode virtual machine to perform effective and efficient compilation for each dynamic operator instance given its input. Specifically, instead of compiling programs into machine code, we encode the operator program into bytecode on the CPU and decode the bytecode into virtual instructions for direct execution on the NPU. Based on the runtime operator compiler, we further propose an operator fuser, which performs symbol-deduction-based fusion on static graphs and runtime fusion on dynamic graphs. Both pattern- and stacking-based fusion are supported to increase fusion opportunities. Evaluation on operators, subgraphs, and models shows that, compared with TorchInductor, PyTorch-eager and MindSpore-graph-O0, we are up to 11.77$\times$ better in terms of the operator/model efficiency and up to 5 orders of magnitude faster in terms of the maximum compilation time.
@@ -20,6 +12,14 @@ TI  - AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization
 AB  - AscendC (Ascend C) operator optimization on Huawei Ascend neural processing units (NPUs) faces a two-fold knowledge bottleneck: unlike the CUDA ecosystem, there are few public reference implementations to learn from, and performance hinges on a coupled two-part artifact - a host-side tiling program that orchestrates data movement and a kernel program that schedules and pipelines instructions. We present AscendOptimizer, an episodic agent that bootstraps this missing expertise by turning execution into experience. On the host side, AscendOptimizer performs profiling-in-the-loop evolutionary search to discover valid and high-performing tiling and data-movement configurations directly from hardware feedback. On the kernel side, it mines transferable optimization motifs by rewinding optimized kernels - systematically de-optimizing them to synthesize instructive "bad-to-good" trajectories - and distills these motifs into a retrievable experience bank for guided rewriting. By alternating host tuning and kernel rewriting in a closed loop, AscendOptimizer steadily expands feasibility and pushes latency down. On a benchmark of 127 real AscendC operators, AscendOptimizer achieves a 1.19x geometric-mean speedup over the open-source baseline, with 49.61% of operators outperforming their references, outperforming strong agent and search baselines.
 UR  - https://arxiv.org/pdf/2603.23566v1
 DA  - 2026-03-24
+ER  -
+
+TY  - UNPB
+ID  - 2603.06728v1
+TI  - Orion: Characterizing and Programming Apple's Neural Engine for LLM Training and Inference
+AB  - Over two billion Apple devices ship with a Neural Processing Unit (NPU) - the Apple Neural Engine (ANE) - yet this accelerator remains largely unused for large language model workloads. CoreML, Apple's public ML framework, imposes opaque abstractions that prevent direct ANE programming and do not support on-device training. We present Orion, to our knowledge the first open end-to-end system that combines direct ANE execution, a compiler pipeline, and stable multi-step training with checkpoint resume in a single native runtime, bypassing CoreML entirely via Apple's private _ANEClient and _ANECompiler APIs. Building on prior characterization work by maderix, we extend public knowledge of ANE constraints to a catalog of 20 restrictions on MIL IR programs, memory layout, compilation limits, and numerical behavior, including 14 previously undocumented constraints discovered during Orion development. Orion includes a compiler that lowers a graph IR through five optimization passes to ANE-native MIL and a runtime that manages IOSurface-backed zero-copy tensor I/O, program caching, and delta compilation for weight updates. Because the ANE bakes weights at compile time, naive training normally requires full recompilation per step (~4.2 s). We show that compiled programs can instead be updated by unloading, patching weight files, and reloading, bypassing ANECCompile() and reducing recompilation from 4,200 ms to 494 ms per step (8.5x), yielding a 3.8x training speedup. On an M4 Max, Orion achieves 170+ tokens/s for GPT-2 124M inference and demonstrates stable training of a 110M-parameter transformer on TinyStories for 1,000 steps in 22 minutes with zero NaN occurrences. We also present LoRA adapter-as-input, enabling hot-swap of adapters via IOSurface inputs without recompilation.
+UR  - https://arxiv.org/pdf/2603.06728v1
+DA  - 2026-03-06
 ER  -
 
 TY  - UNPB
@@ -47,14 +47,6 @@ DA  - 2026-03-19
 ER  -
 
 TY  - UNPB
-ID  - 2603.03383v1
-TI  - Accelerating OpenPangu Inference on NPU via Speculative Decoding
-AB  - To mitigate the Memory Wall bottleneck encountered by Large Language Models (LLMs) during inference on \textbf{NPU} hardware, and addressing the scarcity of native support for mainstream speculative decoding algorithms on domestic infrastructure, this study presents an end-to-end speculative inference acceleration scheme for OpenPangu-7B.
-UR  - https://arxiv.org/pdf/2603.03383v1
-DA  - 2026-03-03
-ER  -
-
-TY  - UNPB
 ID  - 2603.23640v1
 TI  - LLM Inference at the Edge: Mobile, NPU, and GPU Performance Efficiency Trade-offs Under Sustained Load
 AB  - Deploying large language models on-device for always-on personal agents demands sustained inference from hardware tightly constrained in power, thermal envelope, and memory. We benchmark Qwen 2.5 1.5B (4-bit quantised) across four platforms: a Raspberry Pi 5 with Hailo-10H NPU, a Samsung Galaxy S24 Ultra, an iPhone 16 Pro, and a laptop NVIDIA RTX 4050 GPU. Using a fixed 258-token prompt over 20 warm-condition iterations per device, we measure throughput, latency, power, and thermal behaviour. For mobile platforms, thermal management supersedes peak compute as the primary constraint: the iPhone 16 Pro loses nearly half its throughput within two iterations, and the S24 Ultra suffers a hard OS-enforced GPU frequency floor that terminates inference entirely. On dedicated hardware, distinct constraints dominate: the RTX 4050 is bounded by its battery power ceiling, while the Hailo-10H is limited by on-module memory bandwidth. The RTX 4050 sustains 131.7 tok/s at 34.1 W; the Hailo-10H sustains 6.9 tok/s at under 2 W with near-zero variance, matching the RTX 4050 in energy proportionality at 19x lower throughput. Results should be interpreted as platform-level deployment characterisations for a single model and prompt type, reflecting hardware and software combined, rather than general claims about hardware capability alone.
@@ -76,4 +68,12 @@ TI  - From ex(p) to poly: Gaussian Splatting with Polynomial Kernels
 AB  - Recent advancements in Gaussian Splatting (3DGS) have introduced various modifications to the original kernel, resulting in significant performance improvements. However, many of these kernel changes are incompatible with existing datasets optimized for the original Gaussian kernel, presenting a challenge for widespread adoption. In this work, we address this challenge by proposing an alternative kernel that maintains compatibility with existing datasets while improving computational efficiency. Specifically, we replace the original exponential kernel with a polynomial approximation combined with a ReLU function. This modification allows for more aggressive culling of Gaussians, leading to enhanced performance across different 3DGS implementations. Our results show a notable performance improvement of 4 to 15% with negligible impact on image quality. We also provide a detailed mathematical analysis of the new kernel and discuss its potential benefits for 3DGS implementations on NPU hardware.
 UR  - https://arxiv.org/pdf/2603.18707v1
 DA  - 2026-03-19
+ER  -
+
+TY  - UNPB
+ID  - 2603.03383v1
+TI  - Accelerating OpenPangu Inference on NPU via Speculative Decoding
+AB  - To mitigate the Memory Wall bottleneck encountered by Large Language Models (LLMs) during inference on \textbf{NPU} hardware, and addressing the scarcity of native support for mainstream speculative decoding algorithms on domestic infrastructure, this study presents an end-to-end speculative inference acceleration scheme for OpenPangu-7B.
+UR  - https://arxiv.org/pdf/2603.03383v1
+DA  - 2026-03-03
 ER  -

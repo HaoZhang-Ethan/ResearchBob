@@ -2,15 +2,6 @@
   "label": "2026-04-02",
   "selected_papers": [
     {
-      "paper_id": "2603.06728v1",
-      "title": "Orion: Characterizing and Programming Apple's Neural Engine for LLM Training and Inference",
-      "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.06728",
-      "pdf_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.06728/source.pdf",
-      "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.06728/problem-solution.md",
-      "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.06728/detailed-analysis.md",
-      "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.06728/state.json"
-    },
-    {
       "paper_id": "2603.24239v1",
       "title": "DVM: Real-Time Kernel Generation for Dynamic AI Models",
       "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.24239",
@@ -27,6 +18,15 @@
       "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.23566/problem-solution.md",
       "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.23566/detailed-analysis.md",
       "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.23566/state.json"
+    },
+    {
+      "paper_id": "2603.06728v1",
+      "title": "Orion: Characterizing and Programming Apple's Neural Engine for LLM Training and Inference",
+      "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.06728",
+      "pdf_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.06728/source.pdf",
+      "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.06728/problem-solution.md",
+      "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.06728/detailed-analysis.md",
+      "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.06728/state.json"
     },
     {
       "paper_id": "2603.08088v1",
@@ -56,15 +56,6 @@
       "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.18372/state.json"
     },
     {
-      "paper_id": "2603.03383v1",
-      "title": "Accelerating OpenPangu Inference on NPU via Speculative Decoding",
-      "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.03383",
-      "pdf_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.03383/source.pdf",
-      "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.03383/problem-solution.md",
-      "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.03383/detailed-analysis.md",
-      "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.03383/state.json"
-    },
-    {
       "paper_id": "2603.23640v1",
       "title": "LLM Inference at the Edge: Mobile, NPU, and GPU Performance Efficiency Trade-offs Under Sustained Load",
       "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.23640",
@@ -90,6 +81,15 @@
       "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.18707/problem-solution.md",
       "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.18707/detailed-analysis.md",
       "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.18707/state.json"
+    },
+    {
+      "paper_id": "2603.03383v1",
+      "title": "Accelerating OpenPangu Inference on NPU via Speculative Decoding",
+      "paper_dir": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.03383",
+      "pdf_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.03383/source.pdf",
+      "summary_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.03383/problem-solution.md",
+      "analysis_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.03383/detailed-analysis.md",
+      "state_path": "/Users/zhanghao/Project/AutoResearch/research-workspace/papers/2603.03383/state.json"
     }
   ],
   "failed_or_retry": []
