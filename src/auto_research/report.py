@@ -180,7 +180,13 @@ def _load_conflict_entries(paper_dir: Path) -> list[tuple[str, dict[str, str]]]:
                 ("manual-review", _named_invalid_entry(paper_dir, artifact_path.name, reason))
             )
             continue
-        if artifact_path.name == PRIMARY_ARTIFACT_NAME or not artifact_path.is_file():
+        if artifact_path.name == PRIMARY_ARTIFACT_NAME:
+            continue
+        if not artifact_path.is_file():
+            reason = "Unexpected artifact file present; Refusing to read non-regular artifact"
+            entries.append(
+                ("manual-review", _named_invalid_entry(paper_dir, artifact_path.name, reason))
+            )
             continue
 
         try:

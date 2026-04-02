@@ -199,6 +199,30 @@ def test_intake_cli_handles_missing_default_profile(tmp_path, capsys) -> None:
     assert "Unable to read intake profile:" in captured.err
 
 
+def test_intake_cli_fails_cleanly_when_httpx_client_init_fails(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    def broken_client(*args, **kwargs):
+        raise ImportError("Using SOCKS proxy, but socks support is missing")
+
+    monkeypatch.setattr("auto_research.arxiv.httpx.Client", broken_client)
+
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+    profile_path = workspace / "profile" / "interest-profile.md"
+    profile_path.write_text(
+        Path("tests/fixtures/interest_profile.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    result = main(["intake", "--workspace", str(workspace), "--max-results", "1"])
+
+    assert result == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Intake failed:" in captured.err
+    assert "httpx" in captured.err.lower() or "proxy" in captured.err.lower()
+
+
 def test_intake_cli_rejects_symlinked_profile_path(tmp_path, monkeypatch, capsys) -> None:
     calls: list[dict[str, object]] = []
 

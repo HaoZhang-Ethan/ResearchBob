@@ -17,7 +17,17 @@ def _extract_arxiv_id(raw_id_url: str) -> str:
 
 class ArxivClient:
     def __init__(self, client: httpx.Client | None = None, endpoint: str | None = None) -> None:
-        self._client = client or httpx.Client(timeout=30.0)
+        if client is None:
+            try:
+                self._client = httpx.Client(timeout=30.0)
+            except (ImportError, ModuleNotFoundError) as exc:
+                # httpx can raise import-style errors at client initialization time when proxy
+                # configuration implies optional dependencies (e.g. SOCKS support).
+                raise OSError(
+                    f"Unable to initialize httpx client (check proxy settings / optional dependencies): {exc}"
+                ) from None
+        else:
+            self._client = client
         self._endpoint = endpoint or "http://export.arxiv.org/api/query"
 
     def fetch_recent(self, query: str, max_results: int = 25) -> list[RegistryEntry]:

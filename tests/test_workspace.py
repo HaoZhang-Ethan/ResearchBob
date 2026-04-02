@@ -117,6 +117,45 @@ def test_write_registry_rejects_symlinked_parent_directory(tmp_path) -> None:
         write_registry(symlink_dir / "registry.jsonl", [])
 
 
+def test_registry_accepts_tmp_root_workspace() -> None:
+    tmp_root = Path("/tmp")
+    if not tmp_root.exists():
+        pytest.skip("requires /tmp support")
+
+    workspace = tmp_root / f"auto-research-registry-test-{time.time_ns()}"
+    try:
+        ensure_workspace(workspace)
+        registry_path = workspace / "papers" / "registry.jsonl"
+        entry = RegistryEntry(
+            arxiv_id="2501.00001v1",
+            title="Temp Root Registry",
+            summary="temp root registry test",
+            pdf_url="https://arxiv.org/pdf/2501.00001v1",
+            published_at="2026-01-01T00:00:00Z",
+            updated_at="2026-01-01T00:00:00Z",
+            relevance_band="adjacent",
+            source="arxiv",
+        )
+
+        write_registry(registry_path, [entry])
+        loaded = load_registry(registry_path)
+
+        assert [item.arxiv_id for item in loaded] == ["2501.00001v1"]
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+def test_load_registry_reports_invalid_utf8_as_corruption(tmp_path) -> None:
+    registry_path = tmp_path / "registry.jsonl"
+    registry_path.write_bytes(b"\xff\n")
+
+    with pytest.raises(RegistryCorruptionError, match="UTF-8") as excinfo:
+        load_registry(registry_path)
+
+    assert excinfo.value.path == registry_path
+    assert excinfo.value.line_number == 1
+
+
 def test_registry_entry_stable_id_handles_slash_ids() -> None:
     entry = RegistryEntry(
         arxiv_id="solv-int/9901001v2",

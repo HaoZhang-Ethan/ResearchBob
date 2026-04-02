@@ -26,10 +26,17 @@ _REQUIRED_FIELDS: tuple[str, ...] = (
 )
 _ALLOWED_RELEVANCE_BANDS = {"high-match", "adjacent", "low-priority"}
 
+_ALLOWED_SYMLINK_ANCESTORS = {
+    Path("/tmp"),
+    Path("/var"),
+}
 
 def _reject_symlinked_parents(path: Path) -> None:
-    for parent in path.parents:
+    absolute = path.absolute()
+    for parent in absolute.parents:
         if parent.is_symlink():
+            if parent in _ALLOWED_SYMLINK_ANCESTORS:
+                continue
             raise OSError(f"Refusing to use registry path with symlinked parent directory: {parent}")
 
 
@@ -43,53 +50,59 @@ def load_registry(path: Path) -> list[RegistryEntry]:
         raise OSError(f"Refusing to read non-regular registry file: {path}")
 
     entries: list[RegistryEntry] = []
-    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        raw_line = line.strip()
-        if not raw_line:
-            continue
-        try:
-            payload = json.loads(raw_line)
-        except json.JSONDecodeError as exc:
-            raise RegistryCorruptionError(path, line_number, f"malformed JSON: {exc.msg}") from exc
+    with path.open("rb") as handle:
+        for line_number, raw_bytes in enumerate(handle, start=1):
+            try:
+                line = raw_bytes.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise RegistryCorruptionError(path, line_number, "Unable to decode registry as UTF-8") from exc
 
-        if not isinstance(payload, dict):
-            raise RegistryCorruptionError(path, line_number, "row must be a JSON object")
+            raw_line = line.strip()
+            if not raw_line:
+                continue
+            try:
+                payload = json.loads(raw_line)
+            except json.JSONDecodeError as exc:
+                raise RegistryCorruptionError(path, line_number, f"malformed JSON: {exc.msg}") from exc
 
-        missing = [field for field in _REQUIRED_FIELDS if field not in payload]
-        if missing:
-            raise RegistryCorruptionError(
-                path,
-                line_number,
-                f"missing required fields: {', '.join(sorted(missing))}",
-            )
+            if not isinstance(payload, dict):
+                raise RegistryCorruptionError(path, line_number, "row must be a JSON object")
 
-        non_string_fields = [
-            field for field in _REQUIRED_FIELDS if not isinstance(payload.get(field), str)
-        ]
-        if non_string_fields:
-            raise RegistryCorruptionError(
-                path,
-                line_number,
-                f"invalid field types (expected strings): {', '.join(sorted(non_string_fields))}",
-            )
+            missing = [field for field in _REQUIRED_FIELDS if field not in payload]
+            if missing:
+                raise RegistryCorruptionError(
+                    path,
+                    line_number,
+                    f"missing required fields: {', '.join(sorted(missing))}",
+                )
 
-        try:
-            payload["arxiv_id"] = validate_arxiv_id(payload["arxiv_id"])
-        except ValueError as exc:
-            raise RegistryCorruptionError(path, line_number, "invalid arxiv_id") from exc
+            non_string_fields = [
+                field for field in _REQUIRED_FIELDS if not isinstance(payload.get(field), str)
+            ]
+            if non_string_fields:
+                raise RegistryCorruptionError(
+                    path,
+                    line_number,
+                    f"invalid field types (expected strings): {', '.join(sorted(non_string_fields))}",
+                )
 
-        relevance_band = payload.get("relevance_band")
-        if relevance_band not in _ALLOWED_RELEVANCE_BANDS:
-            raise RegistryCorruptionError(
-                path,
-                line_number,
-                f"invalid relevance_band: {relevance_band}",
-            )
+            try:
+                payload["arxiv_id"] = validate_arxiv_id(payload["arxiv_id"])
+            except ValueError as exc:
+                raise RegistryCorruptionError(path, line_number, "invalid arxiv_id") from exc
 
-        try:
-            entries.append(RegistryEntry(**payload))
-        except (TypeError, ValueError) as exc:
-            raise RegistryCorruptionError(path, line_number, f"schema mismatch: {exc}") from exc
+            relevance_band = payload.get("relevance_band")
+            if relevance_band not in _ALLOWED_RELEVANCE_BANDS:
+                raise RegistryCorruptionError(
+                    path,
+                    line_number,
+                    f"invalid relevance_band: {relevance_band}",
+                )
+
+            try:
+                entries.append(RegistryEntry(**payload))
+            except (TypeError, ValueError) as exc:
+                raise RegistryCorruptionError(path, line_number, f"schema mismatch: {exc}") from exc
     return entries
 
 
