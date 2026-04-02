@@ -20,6 +20,7 @@ def run() -> int:
         )
     )
     print(result.report_path)
+    print(result.longterm_summary_path)
     print(result.ris_path)
     return 0
 

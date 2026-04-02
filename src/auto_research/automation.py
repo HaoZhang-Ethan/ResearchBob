@@ -4,15 +4,21 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+import httpx
+
+from auto_research.analysis import build_detailed_analysis, render_detailed_analysis_markdown
 from auto_research.extraction import validate_extraction_document
 from auto_research.intake import run_intake
 from auto_research.models import InterestProfile, RegistryEntry
 from auto_research.openai_client import OpenAIResponsesClient, SummaryArtifact
+from auto_research.pdf import download_pdf
 from auto_research.profile import load_interest_profile
 from auto_research.report import compose_report
 from auto_research.ris import export_ris
 from auto_research.selection import RankedCandidate, prefilter_candidates
+from auto_research.state import PaperState, update_paper_state
 from auto_research.workspace import ensure_workspace
+from auto_research.longterm import update_longterm_summary
 
 
 @dataclass(slots=True)
@@ -21,7 +27,7 @@ class PipelineConfig:
     profile_path: Path | None = None
     max_results: int = 20
     prefilter_limit: int = 15
-    top_k: int = 5
+    top_k: int = 10
     label: str | None = None
     model: str | None = None
     overwrite_summaries: bool = False
@@ -33,6 +39,7 @@ class PipelineResult:
     selected_entries: list[RegistryEntry]
     report_path: Path
     ris_path: Path
+    longterm_summary_path: Path
 
 
 def _default_label() -> str:
@@ -41,6 +48,18 @@ def _default_label() -> str:
 
 def _problem_solution_path(workspace: Path, entry: RegistryEntry) -> Path:
     return workspace / "papers" / entry.stable_id.replace("/", "_") / "problem-solution.md"
+
+
+def _detailed_analysis_path(workspace: Path, entry: RegistryEntry) -> Path:
+    return workspace / "papers" / entry.stable_id.replace("/", "_") / "detailed-analysis.md"
+
+
+def _pdf_path(workspace: Path, entry: RegistryEntry) -> Path:
+    return workspace / "papers" / entry.stable_id.replace("/", "_") / "source.pdf"
+
+
+def _state_path(workspace: Path, entry: RegistryEntry) -> Path:
+    return workspace / "papers" / entry.stable_id.replace("/", "_") / "state.json"
 
 
 def _render_summary_markdown(summary: SummaryArtifact) -> str:
@@ -119,6 +138,74 @@ def _write_summary_if_needed(
     return output_path
 
 
+def _download_pdf_if_needed(*, workspace: Path, entry: RegistryEntry) -> Path | None:
+    output_path = _pdf_path(workspace, entry)
+    state_path = _state_path(workspace, entry)
+    if output_path.exists():
+        update_paper_state(state_path, status="pdf_downloaded", last_error="")
+        return output_path
+
+    try:
+        with httpx.Client(timeout=60.0, follow_redirects=True, trust_env=False) as client:
+            download_pdf(client=client, url=entry.pdf_url, destination=output_path)
+    except Exception as exc:
+        update_paper_state(
+            state_path,
+            status="pdf_failed",
+            last_error=str(exc),
+        )
+        return None
+
+    update_paper_state(state_path, status="pdf_downloaded", last_error="")
+    return output_path
+
+
+def _write_detailed_analysis_if_needed(
+    *,
+    workspace: Path,
+    profile: InterestProfile,
+    entry: RegistryEntry,
+    client: OpenAIResponsesClient,
+    summary_path: Path,
+) -> Path | None:
+    output_path = _detailed_analysis_path(workspace, entry)
+    state_path = _state_path(workspace, entry)
+    pdf_path = _pdf_path(workspace, entry)
+
+    if output_path.exists():
+        update_paper_state(state_path, status="analysis_done", last_error="")
+        return output_path
+
+    if not pdf_path.exists():
+        update_paper_state(state_path, status="needs_retry", last_error="PDF missing")
+        return None
+
+    try:
+        _, sections = build_detailed_analysis(
+            client=client,
+            profile=profile,
+            entry=entry,
+            pdf_path=pdf_path,
+        )
+    except Exception as exc:
+        update_paper_state(
+            state_path,
+            status="analysis_failed",
+            last_error=str(exc),
+        )
+        return None
+
+    summary_markdown = summary_path.read_text(encoding="utf-8")
+    markdown = render_detailed_analysis_markdown(
+        entry=entry,
+        summary_markdown=summary_markdown,
+        detailed_sections=sections,
+    )
+    output_path.write_text(markdown, encoding="utf-8")
+    update_paper_state(state_path, status="analysis_done", last_error="")
+    return output_path
+
+
 def _stage_commit_push(workspace: Path, label: str) -> None:
     repo_root = workspace.parent if workspace.name == "research-workspace" else Path.cwd()
     subprocess.run(["git", "add", "-f", str(workspace)], cwd=repo_root, check=True)
@@ -159,15 +246,30 @@ def run_daily_pipeline(
         selected_entries = _selected_entries_from_ranking(ranked=ranked, entries=candidates)
 
         for entry in selected_entries:
-            _write_summary_if_needed(
+            summary_path = _write_summary_if_needed(
                 workspace=workspace,
                 profile=profile,
                 entry=entry,
                 client=client,
                 overwrite=config.overwrite_summaries,
             )
+            pdf_path = _download_pdf_if_needed(workspace=workspace, entry=entry)
+            if pdf_path is not None:
+                _write_detailed_analysis_if_needed(
+                    workspace=workspace,
+                    profile=profile,
+                    entry=entry,
+                    client=client,
+                    summary_path=summary_path,
+                )
 
     report_path = compose_report(workspace=workspace, mode="daily", label=label)
+    longterm_summary_path = update_longterm_summary(
+        path=workspace / "reports" / "longterm" / "longterm-summary.md",
+        daily_report_path=report_path,
+        selected_titles=[entry.title for entry in selected_entries],
+        selected_summaries=[entry.summary for entry in selected_entries],
+    )
     ris_path = export_ris(selected_entries, workspace / "exports" / "zotero" / f"{label}.ris")
 
     if config.push:
@@ -177,4 +279,5 @@ def run_daily_pipeline(
         selected_entries=selected_entries,
         report_path=report_path,
         ris_path=ris_path,
+        longterm_summary_path=longterm_summary_path,
     )

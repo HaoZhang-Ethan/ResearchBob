@@ -77,6 +77,28 @@ def test_run_daily_pipeline_writes_report_and_ris(tmp_path, monkeypatch) -> None
     )
 
     monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
 
     result = run_daily_pipeline(
         PipelineConfig(
@@ -91,8 +113,13 @@ def test_run_daily_pipeline_writes_report_and_ris(tmp_path, monkeypatch) -> None
     )
 
     artifact_path = workspace / "papers" / "2603.23566" / "problem-solution.md"
+    detailed_path = workspace / "papers" / "2603.23566" / "detailed-analysis.md"
+    state_path = workspace / "papers" / "2603.23566" / "state.json"
     assert artifact_path.exists()
+    assert detailed_path.exists()
+    assert state_path.exists()
     assert result.report_path == workspace / "reports" / "daily" / "2026-04-02.md"
+    assert result.longterm_summary_path == workspace / "reports" / "longterm" / "longterm-summary.md"
     assert result.ris_path == workspace / "exports" / "zotero" / "2026-04-02.ris"
     ris_text = result.ris_path.read_text(encoding="utf-8")
     assert "TY  - UNPB" in ris_text
@@ -177,6 +204,28 @@ Existing
     )
 
     monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
 
     result = run_daily_pipeline(
         PipelineConfig(
@@ -192,3 +241,85 @@ Existing
 
     assert existing.read_text(encoding="utf-8").startswith("---\npaper_id: \"2603.23566v1\"")
     assert result.report_path.exists()
+
+
+def test_run_daily_pipeline_backfills_manual_pdf(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    paper_dir = workspace / "papers" / "2603.23566"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    pdf_path = paper_dir / "source.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\nManual text\n")
+    (workspace / "profile").mkdir(parents=True, exist_ok=True)
+    (workspace / "profile" / "interest-profile.md").write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- npu compiler
+
+## Soft Boundaries
+- operator fusion
+
+## Exclusions
+- irrelevant
+
+## Current-Phase Bias
+- good problems with weak solutions
+
+## Evaluation Heuristics
+- prefer hardware-aware work
+
+## Open Questions
+- how to choose fusion boundaries
+""",
+        encoding="utf-8",
+    )
+
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("download should not be called")),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Manual PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    result = run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-02",
+            push=False,
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    assert (paper_dir / "detailed-analysis.md").exists()
+    assert result.longterm_summary_path.exists()

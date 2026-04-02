@@ -57,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     pipeline.add_argument("--profile", default="research-workspace/profile/interest-profile.md")
     pipeline.add_argument("--max-results", type=int, default=20)
     pipeline.add_argument("--prefilter-limit", type=int, default=15)
-    pipeline.add_argument("--top-k", type=int, default=5)
+    pipeline.add_argument("--top-k", type=int, default=10)
     pipeline.add_argument("--label")
     pipeline.add_argument("--model")
     pipeline.add_argument("--overwrite-summaries", action="store_true")

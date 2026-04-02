@@ -31,6 +31,10 @@ class SummaryArtifact:
     analyst_notes: str
 
 
+def _schema_section_field(name: str) -> dict:
+    return {"type": "string", "description": name}
+
+
 def _extract_text(response_json: dict) -> str:
     parts: list[str] = []
     for item in response_json.get("output", []):
@@ -272,7 +276,8 @@ class OpenAIResponsesClient:
                     "pdf_url": entry.pdf_url,
                 },
                 "task": (
-                    "Generate a concise abstract-level problem-solution artifact. "
+                    "Generate a concise problem-solution artifact that matches the existing extractor workflow. "
+                    "Separate author claims, analyst inference, and uncertainty. "
                     "Do not pretend you have read the full PDF if you only have title and abstract. "
                     "Use medium or low confidence when evidence is limited."
                 ),
@@ -281,10 +286,84 @@ class OpenAIResponsesClient:
         )
         data = self._request(
             instructions=(
-                "You produce short structured research summaries for idea discovery. "
-                "Be concrete, cautious, and concise. Separate problem, solution, and limitations."
+                "You are acting as the problem-solution-extractor skill. "
+                "Produce a short structured artifact with one-sentence summary, problem, proposed solution, "
+                "claimed contributions, evidence basis, limitations, relevance to profile, and analyst notes. "
+                "Be concrete, cautious, and concise."
             ),
             input_payload=payload,
             schema=schema,
         )
         return SummaryArtifact(**data)
+
+    def detailed_analyze_paper(
+        self,
+        *,
+        profile: InterestProfile,
+        entry: RegistryEntry,
+        pdf_text: str,
+    ) -> dict[str, str]:
+        schema = {
+            "name": "detailed_analysis",
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "one_paragraph_summary": _schema_section_field("one_paragraph_summary"),
+                    "problem": _schema_section_field("problem"),
+                    "solution": _schema_section_field("solution"),
+                    "key_mechanism": _schema_section_field("key_mechanism"),
+                    "assumptions": _schema_section_field("assumptions"),
+                    "strengths": _schema_section_field("strengths"),
+                    "weaknesses": _schema_section_field("weaknesses"),
+                    "what_is_missing": _schema_section_field("what_is_missing"),
+                    "why_it_matters": _schema_section_field("why_it_matters"),
+                    "follow_up_ideas": _schema_section_field("follow_up_ideas"),
+                },
+                "required": [
+                    "one_paragraph_summary",
+                    "problem",
+                    "solution",
+                    "key_mechanism",
+                    "assumptions",
+                    "strengths",
+                    "weaknesses",
+                    "what_is_missing",
+                    "why_it_matters",
+                    "follow_up_ideas",
+                ],
+            },
+        }
+        payload = json.dumps(
+            {
+                "profile": {
+                    "core_interests": profile.core_interests,
+                    "soft_boundaries": profile.soft_boundaries,
+                    "current_phase_bias": profile.current_phase_bias,
+                    "evaluation_heuristics": profile.evaluation_heuristics,
+                },
+                "paper": {
+                    "paper_id": entry.arxiv_id,
+                    "title": entry.title,
+                    "summary": entry.summary,
+                    "relevance_band": entry.relevance_band,
+                },
+                "pdf_text": pdf_text[:60000],
+                "task": (
+                    "Generate a deeper analysis from the available paper text. "
+                    "Focus on problem, solution, key mechanism, assumptions, strengths, weaknesses, "
+                    "what is missing, why it matters to the profile, and plausible follow-up ideas. "
+                    "Preserve uncertainty when the extracted text is noisy."
+                ),
+            },
+            ensure_ascii=False,
+        )
+        return self._request(
+            instructions=(
+                "You are producing a detailed follow-up analysis for a shortlisted research paper. "
+                "Use the full available text conservatively. "
+                "Write concise but specific sections that help identify idea gaps and follow-up directions."
+            ),
+            input_payload=payload,
+            schema=schema,
+        )
