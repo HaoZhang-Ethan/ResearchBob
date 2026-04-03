@@ -28,6 +28,7 @@ def test_ensure_workspace_creates_phase1_directories(tmp_path) -> None:
     assert (root / "papers").is_dir()
     assert (root / "reports" / "daily").is_dir()
     assert (root / "reports" / "manual").is_dir()
+    assert (root / "issue-intake").is_dir()
 
 
 def test_ensure_workspace_rejects_symlinked_root(tmp_path) -> None:

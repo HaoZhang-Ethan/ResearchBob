@@ -2,6 +2,8 @@ import os
 import sys
 from subprocess import run
 
+from auto_research.cli import main as cli_main
+
 
 def test_cli_help_lists_phase1_commands() -> None:
     result = run(
@@ -19,3 +21,43 @@ def test_cli_help_lists_phase1_commands() -> None:
     assert "validate-extraction" in result.stdout
     assert "compose-report" in result.stdout
     assert "daily-pipeline" in result.stdout
+
+
+def test_sync_issues_cli_runs_and_reports_summary(monkeypatch, capsys, tmp_path) -> None:
+    class Result:
+        inspected_issue_count = 3
+        parsed_issue_count = 2
+        changed_request_count = 1
+        refreshed_summaries = [tmp_path / "research-workspace" / "issue-intake" / "llm-agents" / "alice" / "summary.md"]
+
+    monkeypatch.setattr("auto_research.cli.sync_issues", lambda config: Result())
+
+    exit_code = cli_main(["sync-issues", "--workspace", str(tmp_path / "research-workspace")])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "inspected_issues=3" in captured.out
+    assert "parsed_issues=2" in captured.out
+    assert "changed_requests=1" in captured.out
+
+
+def test_sync_issues_cli_rejects_invalid_limit(capsys) -> None:
+    exit_code = cli_main(["sync-issues", "--limit", "0"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "Invalid --limit" in captured.err
+
+
+def test_build_parser_includes_sync_issues_command() -> None:
+    result = run(
+        [sys.executable, "-m", "auto_research.cli", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "PYTHONPATH": "src"},
+    )
+
+    assert result.returncode == 0
+    assert "sync-issues" in result.stdout

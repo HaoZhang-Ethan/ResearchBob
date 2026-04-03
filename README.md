@@ -138,6 +138,7 @@ Available commands:
 - `validate-extraction`
 - `compose-report`
 - `daily-pipeline`
+- `sync-issues`
 
 ---
 
@@ -167,6 +168,55 @@ In practice:
 
 - `skills/` is for interactive use with Codex
 - `daily-pipeline` is for scheduled local automation
+- `sync-issues` is for pulling structured issue requests into the local workspace
+
+### GitHub Issue Intake
+
+You can let users submit demand through GitHub issues in this repository, then pull those requests into the local workspace.
+
+Minimal issue format:
+
+```md
+---
+direction: llm-agents
+---
+
+## Background
+...
+
+## Requirements
+...
+
+## Constraints
+...
+
+## Notes
+...
+```
+
+Run the sync locally:
+
+```bash
+PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace
+```
+
+With auto push:
+
+```bash
+PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace --push
+```
+
+Generated files are written under:
+
+```text
+research-workspace/issue-intake/<direction>/<github-username>/
+```
+
+Repository rename note:
+
+- by default the command derives `owner/repo` from the current git remote
+- if the repository is renamed, update your local remote and the sync command will keep working
+- you can also override discovery with `--repo owner/repo`
 
 ### How to Install the Skills into Codex
 

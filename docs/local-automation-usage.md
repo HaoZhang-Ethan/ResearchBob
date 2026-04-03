@@ -28,6 +28,49 @@ Or use the wrapper:
 PYTHONPATH=src python scripts/daily_pipeline.py
 ```
 
+## GitHub Issue Intake
+
+Use `sync-issues` when you want to pull structured demand from GitHub issues in the current repository.
+
+Issue template:
+
+```md
+---
+direction: llm-agents
+---
+
+## Background
+...
+
+## Requirements
+...
+
+## Constraints
+...
+
+## Notes
+...
+```
+
+Manual run:
+
+```bash
+PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace
+```
+
+Push generated intake artifacts:
+
+```bash
+PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace --push
+```
+
+Behavior:
+
+1. derives the repository from the current git remote unless `--repo` is provided
+2. fetches issues through `gh`
+3. writes grouped artifacts under `research-workspace/issue-intake/<direction>/<github-username>/`
+4. keeps one request file per issue and refreshes a cumulative `summary.md`
+
 ## What It Does
 
 The pipeline:

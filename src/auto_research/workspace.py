@@ -7,6 +7,7 @@ PHASE1_DIRECTORIES = (
     "papers",
     "reports/daily",
     "reports/manual",
+    "issue-intake",
 )
 
 _ALLOWED_SYMLINK_ANCESTORS = {

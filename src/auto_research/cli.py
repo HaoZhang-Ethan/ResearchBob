@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -10,6 +11,7 @@ import httpx
 
 from auto_research.env import load_env_file
 from auto_research.extraction import validate_extraction_document
+from auto_research.github_intake import IssueSyncConfig, sync_issues
 from auto_research.intake import IntakeDataError, IntakeProfileError, run_intake
 from auto_research.profile import validate_interest_profile_text
 from auto_research.registry import RegistryCorruptionError
@@ -62,6 +64,13 @@ def build_parser() -> argparse.ArgumentParser:
     pipeline.add_argument("--model")
     pipeline.add_argument("--overwrite-summaries", action="store_true")
     pipeline.add_argument("--push", action="store_true")
+
+    sync_issues_parser = subparsers.add_parser("sync-issues")
+    sync_issues_parser.add_argument("--workspace", default="research-workspace")
+    sync_issues_parser.add_argument("--repo")
+    sync_issues_parser.add_argument("--state", choices=("open", "all"), default="open")
+    sync_issues_parser.add_argument("--limit", type=int, default=100)
+    sync_issues_parser.add_argument("--push", action="store_true")
 
     return parser
 
@@ -223,6 +232,36 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 1
         print(result.report_path)
         print(result.ris_path)
+        return 0
+
+    if args.command == "sync-issues":
+        if args.limit <= 0:
+            print("Invalid --limit: must be a positive integer", file=sys.stderr)
+            return 1
+        try:
+            result = sync_issues(
+                IssueSyncConfig(
+                    workspace=Path(args.workspace),
+                    repo=args.repo,
+                    state=args.state,
+                    limit=args.limit,
+                    push=args.push,
+                )
+            )
+        except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
+            print(f"Issue sync failed: {exc}", file=sys.stderr)
+            return 1
+        print(
+            " ".join(
+                [
+                    f"inspected_issues={result.inspected_issue_count}",
+                    f"parsed_issues={result.parsed_issue_count}",
+                    f"changed_requests={result.changed_request_count}",
+                ]
+            )
+        )
+        for summary_path in result.refreshed_summaries:
+            print(summary_path)
         return 0
 
     return 0
