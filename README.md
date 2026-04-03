@@ -33,7 +33,8 @@ Use the repository as a set of reusable Codex skills for interactive paper work:
 - revise a research profile,
 - fetch papers on demand,
 - analyze a specific paper,
-- compose a report interactively.
+- compose a report interactively,
+- simulate reviewer-style feedback on your own paper draft before submission.
 
 This is the right mode if you want to work with Codex paper by paper instead of only relying on scheduled automation.
 
@@ -148,6 +149,7 @@ Available skills:
 
 - [research-interest-profile](skills/research-interest-profile/SKILL.md)
 - [paper-intake-and-normalize](skills/paper-intake-and-normalize/SKILL.md)
+- [paper-review-simulator](skills/paper-review-simulator/SKILL.md)
 - [problem-solution-extractor](skills/problem-solution-extractor/SKILL.md)
 - [report-composer](skills/report-composer/SKILL.md)
 
@@ -156,6 +158,7 @@ Example prompts:
 ```text
 Use $research-interest-profile to revise my research profile.
 Use $paper-intake-and-normalize to fetch today's arXiv papers.
+Use $paper-review-simulator to critique my paper draft before submission.
 Use $problem-solution-extractor to analyze this paper.
 Use $report-composer to generate today's report.
 ```
@@ -179,6 +182,7 @@ Example using symlinks:
 mkdir -p ~/.codex/skills
 ln -s /path/to/AutoResearch/skills/research-interest-profile ~/.codex/skills/research-interest-profile
 ln -s /path/to/AutoResearch/skills/paper-intake-and-normalize ~/.codex/skills/paper-intake-and-normalize
+ln -s /path/to/AutoResearch/skills/paper-review-simulator ~/.codex/skills/paper-review-simulator
 ln -s /path/to/AutoResearch/skills/problem-solution-extractor ~/.codex/skills/problem-solution-extractor
 ln -s /path/to/AutoResearch/skills/report-composer ~/.codex/skills/report-composer
 ```
@@ -224,6 +228,7 @@ scripts/
 skills/
 ├── research-interest-profile/
 ├── paper-intake-and-normalize/
+├── paper-review-simulator/
 ├── problem-solution-extractor/
 └── report-composer/
 src/auto_research/
@@ -340,6 +345,7 @@ AutoResearch 是一套本地运行的研究自动化流程，用来持续完成�
 - 临时抓一批论文
 - 单独分析一篇论文
 - 生成某天的报告
+- 在投稿前模拟 reviewer 对自己 paper 的质疑
 
 ### 如何安装成 Codex Skill
 
@@ -355,6 +361,7 @@ AutoResearch 是一套本地运行的研究自动化流程，用来持续完成�
 mkdir -p ~/.codex/skills
 ln -s /path/to/AutoResearch/skills/research-interest-profile ~/.codex/skills/research-interest-profile
 ln -s /path/to/AutoResearch/skills/paper-intake-and-normalize ~/.codex/skills/paper-intake-and-normalize
+ln -s /path/to/AutoResearch/skills/paper-review-simulator ~/.codex/skills/paper-review-simulator
 ln -s /path/to/AutoResearch/skills/problem-solution-extractor ~/.codex/skills/problem-solution-extractor
 ln -s /path/to/AutoResearch/skills/report-composer ~/.codex/skills/report-composer
 ```
@@ -460,6 +467,7 @@ python -m auto_research.cli daily-pipeline --workspace research-workspace --push
 
 - [research-interest-profile](skills/research-interest-profile/SKILL.md)
 - [paper-intake-and-normalize](skills/paper-intake-and-normalize/SKILL.md)
+- [paper-review-simulator](skills/paper-review-simulator/SKILL.md)
 - [problem-solution-extractor](skills/problem-solution-extractor/SKILL.md)
 - [report-composer](skills/report-composer/SKILL.md)
 
@@ -468,6 +476,7 @@ python -m auto_research.cli daily-pipeline --workspace research-workspace --push
 ```text
 Use $research-interest-profile to revise my research profile.
 Use $paper-intake-and-normalize to fetch today's arXiv papers.
+Use $paper-review-simulator to critique my paper draft before submission.
 Use $problem-solution-extractor to analyze this paper.
 Use $report-composer to generate today's report.
 ```
@@ -509,6 +518,7 @@ scripts/
 skills/
 ├── research-interest-profile/
 ├── paper-intake-and-normalize/
+├── paper-review-simulator/
 ├── problem-solution-extractor/
 └── report-composer/
 src/auto_research/
