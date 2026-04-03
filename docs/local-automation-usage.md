@@ -32,6 +32,22 @@ PYTHONPATH=src python scripts/daily_pipeline.py
 
 Use `sync-issues` when you want to pull structured demand from GitHub issues in the current repository.
 
+Scope and reliability:
+
+- this entry only feeds the daily paper summary workflow
+- it is not an on-demand paper analysis interface
+- because the automation runs on a personal laptop, sync time and summary delivery time are not guaranteed
+
+User-side view:
+
+- if you are only using the service as a requester, you only need to submit an issue in the required format
+- you do not need to care how the deployment side runs or schedules the intake workflow
+
+Deployment-side view:
+
+- the deployment side must run `sync-issues` locally to pull requests from GitHub
+- this is a best-effort laptop deployment, so schedule and delivery time are inherently unstable
+
 Issue template:
 
 ```md
@@ -70,6 +86,28 @@ Behavior:
 2. fetches issues through `gh`
 3. writes grouped artifacts under `research-workspace/issue-intake/<direction>/<github-username>/`
 4. keeps one request file per issue and refreshes a cumulative `summary.md`
+
+## Prompt-Based Local Deployment
+
+If you want an AI assistant to help deploy this workflow locally, you can paste:
+
+```text
+Please help me set up this repository as a local daily paper summary workflow on my machine.
+
+Repository path: /path/to/ResearchBob
+Workspace path: /path/to/ResearchBob/research-workspace
+
+Tasks:
+1. Initialize the workspace if needed.
+2. Tell me which environment variables or `.env.local` values I still need to provide.
+3. Verify the CLI commands for `daily-pipeline` and `sync-issues`.
+4. Show me the exact command to run the daily paper summary locally.
+5. Show me an optional cron example.
+
+Important constraints:
+- This deployment is only for the daily paper summary workflow.
+- GitHub issue intake is best-effort because the automation runs on a laptop, not always-on infrastructure.
+```
 
 ## What It Does
 

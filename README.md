@@ -1,8 +1,8 @@
-# AutoResearch
+# ResearchBob
 
 [Jump to Chinese / 跳转中文](#中文说明)
 
-AutoResearch is a local research workflow for discovering, filtering, analyzing, and summarizing arXiv papers around a persistent research profile.
+ResearchBob is a local research workflow for discovering, filtering, analyzing, and summarizing arXiv papers around a persistent research profile.
 
 It is built for one practical goal:
 
@@ -14,7 +14,7 @@ It is built for one practical goal:
 
 ### Usage Mode 1: Local Automation Workflow
 
-Use AutoResearch as a local automation project that:
+Use ResearchBob as a local automation project that:
 
 - fetches arXiv papers,
 - ranks and selects candidates,
@@ -45,7 +45,7 @@ This is the right mode if you want to work with Codex paper by paper instead of 
 ### 1. Initialize a workspace
 
 ```bash
-cd /path/to/AutoResearch
+cd /path/to/ResearchBob
 PYTHONPATH=src python -m auto_research.cli init-workspace --workspace research-workspace
 ```
 
@@ -86,7 +86,7 @@ PYTHONPATH=src python -m auto_research.cli validate-profile research-workspace/p
 If local proxy variables interfere with direct arXiv or gateway access, unset them for the command:
 
 ```bash
-cd /path/to/AutoResearch
+cd /path/to/ResearchBob
 env -u all_proxy -u http_proxy -u https_proxy \
 PYTHONPATH=src \
 python scripts/daily_pipeline.py
@@ -95,10 +95,32 @@ python scripts/daily_pipeline.py
 Or via CLI:
 
 ```bash
-cd /path/to/AutoResearch
+cd /path/to/ResearchBob
 env -u all_proxy -u http_proxy -u https_proxy \
 PYTHONPATH=src \
 python -m auto_research.cli daily-pipeline --workspace research-workspace --push
+```
+
+Prompt-based local deployment:
+
+If you want an AI assistant to help set up the local automation workflow, you can paste:
+
+```text
+Please help me set up this repository as a local daily paper summary workflow on my machine.
+
+Repository path: /path/to/ResearchBob
+Workspace path: /path/to/ResearchBob/research-workspace
+
+Tasks:
+1. Initialize the workspace if needed.
+2. Tell me which environment variables or `.env.local` values I still need to provide.
+3. Verify the CLI commands for `daily-pipeline` and `sync-issues`.
+4. Show me the exact command to run the daily paper summary locally.
+5. Show me an optional cron example.
+
+Important constraints:
+- This deployment is only for the daily paper summary workflow.
+- GitHub issue intake is best-effort because the automation runs on a laptop, not always-on infrastructure.
 ```
 
 ---
@@ -174,6 +196,24 @@ In practice:
 
 You can let users submit demand through GitHub issues in this repository, then pull those requests into the local workspace.
 
+Current scope and reliability:
+
+- this path is only for the daily paper summary workflow
+- it is not an on-demand paper analysis service
+- timing is best-effort only, because the automation runs on my laptop instead of always-on infrastructure
+
+User-side view:
+
+- if you are only submitting requests, you only need to open an issue in the required format
+- you do not need to care how the deployment side sets up the intake workflow
+- after submitting, wait for the next local sync and daily summary cycle
+
+Deployment-side view:
+
+- the operator needs to run `sync-issues` locally to pull issue requests into the workspace
+- if `--push` is enabled, the operator can also commit and push generated intake artifacts
+- because this runs on a laptop, timing is best-effort rather than guaranteed
+
 Minimal issue format:
 
 ```md
@@ -239,6 +279,26 @@ ln -s /path/to/AutoResearch/skills/report-composer ~/.codex/skills/report-compos
 
 If you prefer, you can copy the directories instead of symlinking them.
 
+Prompt-based setup:
+
+If you prefer to let an AI assistant do the setup, you can paste a prompt like this:
+
+```text
+Please install the Codex skills from this repository into my local Codex skills directory.
+
+Repository path: /path/to/ResearchBob
+Target skills directory: ~/.codex/skills
+
+Use symlinks for these skill folders:
+- research-interest-profile
+- paper-intake-and-normalize
+- paper-review-simulator
+- problem-solution-extractor
+- report-composer
+
+After installation, verify the links exist and show me the exact paths that were created.
+```
+
 After installation, restart Codex if your setup requires a restart before newly added skills are discovered.
 
 ### Which Mode Should You Choose?
@@ -298,7 +358,7 @@ The motivation is straightforward:
   - whether the solution is strong or still weak,
   - whether the paper exposes a gap that could become your next idea.
 
-So AutoResearch is not just a paper fetcher and not just a summarizer.
+So ResearchBob is not just a paper fetcher and not just a summarizer.
 
 It is meant to support:
 
@@ -363,7 +423,7 @@ The current repo is also tested locally on Python 3.11 during development.
 
 ## 中文说明
 
-AutoResearch 是一套本地运行的研究自动化流程，用来持续完成这件事：
+ResearchBob 是一套本地运行的研究自动化流程，用来持续完成这件事：
 
 > 把大量新论文收敛成少量真正值得继续想的 idea。
 
@@ -420,6 +480,24 @@ ln -s /path/to/AutoResearch/skills/report-composer ~/.codex/skills/report-compos
 
 安装后，如果你的 Codex 环境不会自动刷新 skills，需要重启一次 Codex。
 
+也可以用 prompt 让 AI 助手代你完成安装，例如：
+
+```text
+请帮我把这个仓库里的 Codex skills 安装到本机的 Codex skills 目录。
+
+仓库路径：/path/to/ResearchBob
+目标目录：~/.codex/skills
+
+请用软链接安装以下目录：
+- research-interest-profile
+- paper-intake-and-normalize
+- paper-review-simulator
+- problem-solution-extractor
+- report-composer
+
+安装完成后，请校验这些链接是否存在，并把实际创建的路径列给我。
+```
+
 ### 该选哪一种方式
 
 - 如果你要每天自动跑，用 **使用方法一**
@@ -432,7 +510,7 @@ ln -s /path/to/AutoResearch/skills/report-composer ~/.codex/skills/report-compos
 ### 1. 初始化工作区
 
 ```bash
-cd /path/to/AutoResearch
+cd /path/to/ResearchBob
 PYTHONPATH=src python -m auto_research.cli init-workspace --workspace research-workspace
 ```
 
@@ -473,7 +551,7 @@ PYTHONPATH=src python -m auto_research.cli validate-profile research-workspace/p
 如果本地代理会影响 arXiv 或模型网关访问，建议在命令前去掉代理变量：
 
 ```bash
-cd /path/to/AutoResearch
+cd /path/to/ResearchBob
 env -u all_proxy -u http_proxy -u https_proxy \
 PYTHONPATH=src \
 python scripts/daily_pipeline.py
@@ -482,7 +560,7 @@ python scripts/daily_pipeline.py
 或者直接调用 CLI：
 
 ```bash
-cd /path/to/AutoResearch
+cd /path/to/ResearchBob
 env -u all_proxy -u http_proxy -u https_proxy \
 PYTHONPATH=src \
 python -m auto_research.cli daily-pipeline --workspace research-workspace --push
@@ -535,6 +613,114 @@ Use $report-composer to generate today's report.
 
 - `skills/` 更适合交互式使用
 - `daily-pipeline` 更适合本地自动定时跑
+
+## GitHub Issue 使用方式
+
+你也可以通过当前仓库的 GitHub issue 提需求，再由本地 `sync-issues` 流程把需求拉到工作区。
+
+当前范围和限制：
+
+- 这个入口只服务于每天论文总结这条流程
+- 它不是一个随时触发、随时返回结果的论文分析服务
+- 因为自动化实际部署在我的笔记本上，不是常驻在线基础设施，所以同步时间和摘要产出时间都无法保证
+
+用户视角：
+
+- 如果你只是提需求，只需要按要求格式写 issue 即可
+- 你不需要关注部署端是怎么部署自动抓取服务的
+- 提交之后，等待下一次本地同步和每天论文总结流程即可
+
+部署端视角：
+
+- 部署端需要在本地运行 `sync-issues`，把 issue 需求拉到工作区
+- 如果使用 `--push`，部署端还可以把 intake 产物自动提交并推送
+- 因为服务跑在笔记本上，所以时间特性只能是 best-effort，而不是强保证
+
+最小 issue 格式：
+
+```md
+---
+direction: llm-agents
+---
+
+## Background
+...
+
+## Requirements
+...
+
+## Constraints
+...
+
+## Notes
+...
+```
+
+本地同步命令：
+
+```bash
+PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace
+```
+
+如果需要自动提交并 push intake 产物：
+
+```bash
+PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace --push
+```
+
+生成目录：
+
+```text
+research-workspace/issue-intake/<direction>/<github-username>/
+```
+
+补充说明：
+
+- 默认会从当前 git remote 推断 `owner/repo`
+- 仓库改名后，只要本地 remote 已更新，这个流程仍然能继续用
+- 也可以用 `--repo owner/repo` 手动指定仓库
+
+### 通过 Prompt 安装 Codex Skill
+
+如果你不想手动安装，也可以把下面这段 prompt 直接贴给 AI 助手：
+
+```text
+请帮我把这个仓库里的 Codex skills 安装到本机的 Codex skills 目录。
+
+仓库路径：/path/to/ResearchBob
+目标目录：~/.codex/skills
+
+请用软链接安装以下目录：
+- research-interest-profile
+- paper-intake-and-normalize
+- paper-review-simulator
+- problem-solution-extractor
+- report-composer
+
+安装完成后，请校验这些链接是否存在，并把实际创建的路径列给我。
+```
+
+### 通过 Prompt 部署本地自动化
+
+如果你想让 AI 助手帮你完成本地部署，也可以直接贴这段 prompt：
+
+```text
+请帮我把这个仓库部署成本地的每天论文总结流程。
+
+仓库路径：/path/to/ResearchBob
+工作区路径：/path/to/ResearchBob/research-workspace
+
+请完成这些事情：
+1. 如果需要，初始化 workspace。
+2. 告诉我还缺哪些环境变量或 `.env.local` 配置。
+3. 校验 `daily-pipeline` 和 `sync-issues` 这两个 CLI 命令的用法。
+4. 给我一条本地运行每天论文总结的准确命令。
+5. 给我一个可选的 cron 示例。
+
+注意：
+- 这个部署只服务于每天论文总结。
+- GitHub issue intake 因为跑在笔记本上，所以同步和产出时间都不是强保证。
+```
 
 ---
 
@@ -622,7 +808,7 @@ tests/
 每天早上 9 点：
 
 ```cron
-0 9 * * * cd /path/to/AutoResearch && env -u all_proxy -u http_proxy -u https_proxy PYTHONPATH=src python scripts/daily_pipeline.py >> /tmp/auto-research-daily.log 2>&1
+0 9 * * * cd /path/to/ResearchBob && env -u all_proxy -u http_proxy -u https_proxy PYTHONPATH=src python scripts/daily_pipeline.py >> /tmp/auto-research-daily.log 2>&1
 ```
 
 ---
