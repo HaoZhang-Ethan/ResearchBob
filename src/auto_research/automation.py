@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -9,11 +10,17 @@ import httpx
 
 from auto_research.analysis import build_detailed_analysis, render_detailed_analysis_markdown
 from auto_research.extraction import validate_extraction_document
+from auto_research.github_intake import (
+    build_fallback_profile_from_issue_intake,
+    close_issue,
+    comment_on_issue,
+    discover_github_repo,
+)
 from auto_research.intake import run_intake
 from auto_research.models import InterestProfile, RegistryEntry
 from auto_research.openai_client import OpenAIResponsesClient, SummaryArtifact
 from auto_research.pdf import download_pdf
-from auto_research.profile import load_interest_profile
+from auto_research.profile import load_interest_profile, validate_interest_profile_text
 from auto_research.report import compose_report
 from auto_research.ris import export_ris
 from auto_research.selection import RankedCandidate, prefilter_candidates
@@ -345,6 +352,77 @@ def _append_run_history(
     return history_path
 
 
+def _ensure_profile_exists(workspace: Path, profile_path: Path) -> Path:
+    if profile_path.exists():
+        return profile_path
+
+    if profile_path.is_symlink():
+        raise OSError(f"Refusing to write symlinked profile file: {profile_path}")
+
+    markdown = build_fallback_profile_from_issue_intake(workspace).markdown
+    errors = validate_interest_profile_text(markdown)
+    if errors:
+        raise ValueError(
+            "Generated invalid fallback interest profile: " + "; ".join(errors)
+        )
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(markdown, encoding="utf-8")
+    return profile_path
+
+
+def _ensure_profile_exists_with_metadata(workspace: Path, profile_path: Path) -> tuple[Path, object | None]:
+    if profile_path.exists():
+        return profile_path, None
+
+    if profile_path.is_symlink():
+        raise OSError(f"Refusing to write symlinked profile file: {profile_path}")
+
+    repo = discover_github_repo()
+    fallback = build_fallback_profile_from_issue_intake(workspace, repo=repo)
+    errors = validate_interest_profile_text(fallback.markdown)
+    if errors:
+        raise ValueError(
+            "Generated invalid fallback interest profile: " + "; ".join(errors)
+        )
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(fallback.markdown, encoding="utf-8")
+    return profile_path, fallback
+
+
+def _auto_close_consumed_issues(
+    *,
+    fallback,
+    label: str,
+    report_path: Path,
+    daily_summary_path: Path,
+) -> None:
+    if fallback is None or not getattr(fallback, "issue_numbers", None) or not getattr(fallback, "repo", None):
+        return
+
+    repo = fallback.repo
+    for issue_number in fallback.issue_numbers:
+        body = (
+            f"This request was incorporated into the completed daily paper summary workflow for `{label}`.\n\n"
+            f"- Report: `{report_path}`\n"
+            f"- Daily Summary: `{daily_summary_path}`"
+        )
+        try:
+            comment_on_issue(repo=repo, issue_number=issue_number, body=body)
+        except Exception as exc:
+            print(
+                f"Warning: unable to comment on consumed issue #{issue_number}: {exc}",
+                file=sys.stderr,
+            )
+            continue
+        try:
+            close_issue(repo=repo, issue_number=issue_number)
+        except Exception as exc:
+            print(
+                f"Warning: unable to close consumed issue #{issue_number}: {exc}",
+                file=sys.stderr,
+            )
+
+
 def run_daily_pipeline(
     config: PipelineConfig,
     *,
@@ -353,6 +431,7 @@ def run_daily_pipeline(
     workspace = ensure_workspace(config.workspace)
     label = config.label or _default_label()
     profile_path = config.profile_path or workspace / "profile" / "interest-profile.md"
+    profile_path, fallback = _ensure_profile_exists_with_metadata(workspace, profile_path)
     profile = load_interest_profile(profile_path)
 
     intake_entries = run_intake(workspace=workspace, profile_path=profile_path, max_results=config.max_results)
@@ -436,6 +515,13 @@ def run_daily_pipeline(
 
     if config.push:
         _stage_commit_push(workspace, label)
+
+    _auto_close_consumed_issues(
+        fallback=fallback,
+        label=label,
+        report_path=report_path,
+        daily_summary_path=daily_summary_path,
+    )
 
     return PipelineResult(
         selected_entries=selected_entries,

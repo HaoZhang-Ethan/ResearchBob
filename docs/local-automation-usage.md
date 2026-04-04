@@ -28,6 +28,10 @@ Or use the wrapper:
 PYTHONPATH=src python scripts/daily_pipeline.py
 ```
 
+If `research-workspace/profile/interest-profile.md` is missing, `daily-pipeline` will attempt to synthesize it from `research-workspace/issue-intake/` before the run continues.
+
+When that fallback path is used and the run succeeds, the workflow can also comment on and close the consumed GitHub issues on a best-effort basis.
+
 ## GitHub Issue Intake
 
 Use `sync-issues` when you want to pull structured demand from GitHub issues in the current repository.

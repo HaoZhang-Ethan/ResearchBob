@@ -168,6 +168,10 @@ PYTHONPATH=src \
 python -m auto_research.cli daily-pipeline --workspace research-workspace --push
 ```
 
+If `research-workspace/profile/interest-profile.md` is missing, `daily-pipeline` will now try to generate it automatically from `research-workspace/issue-intake/` before continuing.
+
+If that fallback profile generation is used and the run finishes successfully, the pipeline can also comment on and close the consumed GitHub issues on a best-effort basis.
+
 ---
 
 ## What You Get

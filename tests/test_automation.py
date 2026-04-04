@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
 from auto_research.automation import PipelineConfig, run_daily_pipeline
 from auto_research.models import RegistryEntry
 from auto_research.openai_client import OpenAIResponsesClient, SummaryArtifact
+from auto_research.workspace import ensure_workspace
 
 
 class FakeLLMClient:
@@ -258,8 +261,582 @@ Existing
         llm_client=FakeLLMClient(),
     )
 
-    assert existing.read_text(encoding="utf-8").startswith("---\npaper_id: \"2603.23566v1\"")
+
+def test_run_daily_pipeline_generates_profile_from_issue_intake(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    summary_dir = workspace / "issue-intake" / "llm-agents" / "alice"
+    (summary_dir / "requests").mkdir(parents=True, exist_ok=True)
+    (summary_dir / "summary.md").write_text(
+        """# Issue Intake Summary: llm-agents / alice
+
+- Direction: `llm-agents`
+- GitHub Username: `alice`
+- Request Count: 1
+
+## Active Issues
+- #12: Track multi-agent papers (OPEN)
+
+## Requirements
+- prefer strong system design
+- focus on memory and orchestration
+
+## Constraints
+- avoid pure benchmark papers
+
+## Notes
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-03",
+            push=False,
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    profile_path = workspace / "profile" / "interest-profile.md"
+    assert profile_path.exists()
+    assert "Auto-generated from GitHub issue intake" in profile_path.read_text(encoding="utf-8")
+
+
+def test_run_daily_pipeline_auto_closes_consumed_issues(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    request_dir = workspace / "issue-intake" / "llm-agents" / "alice" / "requests"
+    request_dir.mkdir(parents=True, exist_ok=True)
+    (request_dir.parent / "summary.md").write_text(
+        """# Issue Intake Summary: llm-agents / alice
+
+- Direction: `llm-agents`
+- GitHub Username: `alice`
+- Request Count: 1
+
+## Active Issues
+- #12: Track multi-agent papers (OPEN)
+
+## Requirements
+- prefer strong system design
+""",
+        encoding="utf-8",
+    )
+    (request_dir / "12.md").write_text(
+        """---
+issue_number: 12
+title: "Track multi-agent papers"
+state: "OPEN"
+author_login: "alice"
+direction: "llm-agents"
+normalized_direction: "llm-agents"
+created_at: "2026-04-03T10:00:00Z"
+updated_at: "2026-04-03T11:00:00Z"
+url: "https://github.com/example/research/issues/12"
+---
+""",
+        encoding="utf-8",
+    )
+
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+    comments: list[tuple[str, int, str]] = []
+    closes: list[tuple[str, int]] = []
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.comment_on_issue",
+        lambda *, repo, issue_number, body: comments.append((repo, issue_number, body)),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.close_issue",
+        lambda *, repo, issue_number: closes.append((repo, issue_number)),
+    )
+    monkeypatch.setattr("auto_research.automation.discover_github_repo", lambda cwd=None: "example/research")
+
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-03",
+            push=False,
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    assert comments and comments[0][0] == "example/research"
+    assert comments[0][1] == 12
+    assert "2026-04-03" in comments[0][2]
+    assert closes == [("example/research", 12)]
+
+
+def test_run_daily_pipeline_fails_when_profile_missing_and_no_issue_intake(tmp_path) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    with pytest.raises(ValueError, match="issue intake"):
+        run_daily_pipeline(
+            PipelineConfig(
+                workspace=workspace,
+                top_k=1,
+                prefilter_limit=5,
+                max_results=5,
+                label="2026-04-03",
+                push=False,
+            ),
+            llm_client=FakeLLMClient(),
+        )
+
+
+def test_run_daily_pipeline_preserves_existing_profile(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    profile_path = workspace / "profile" / "interest-profile.md"
+    valid_profile_text = """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+"""
+    profile_path.write_text(valid_profile_text, encoding="utf-8")
+
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-03",
+            push=False,
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    assert profile_path.read_text(encoding="utf-8") == valid_profile_text
+
+
+def test_run_daily_pipeline_skips_auto_close_with_existing_profile(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    profile_path = workspace / "profile" / "interest-profile.md"
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+    comments: list[tuple[str, int, str]] = []
+    closes: list[tuple[str, int]] = []
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.comment_on_issue",
+        lambda *, repo, issue_number, body: comments.append((repo, issue_number, body)),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.close_issue",
+        lambda *, repo, issue_number: closes.append((repo, issue_number)),
+    )
+
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-03",
+            push=False,
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    assert comments == []
+    assert closes == []
+
+
+def test_run_daily_pipeline_tolerates_issue_comment_failure(tmp_path, monkeypatch, capsys) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    request_dir = workspace / "issue-intake" / "llm-agents" / "alice" / "requests"
+    request_dir.mkdir(parents=True, exist_ok=True)
+    (request_dir.parent / "summary.md").write_text(
+        """# Issue Intake Summary: llm-agents / alice
+
+- Direction: `llm-agents`
+- GitHub Username: `alice`
+- Request Count: 1
+
+## Active Issues
+- #12: Track multi-agent papers (OPEN)
+""",
+        encoding="utf-8",
+    )
+    (request_dir / "12.md").write_text(
+        """---
+issue_number: 12
+title: "Track multi-agent papers"
+state: "OPEN"
+author_login: "alice"
+direction: "llm-agents"
+normalized_direction: "llm-agents"
+created_at: "2026-04-03T10:00:00Z"
+updated_at: "2026-04-03T11:00:00Z"
+url: "https://github.com/example/research/issues/12"
+---
+""",
+        encoding="utf-8",
+    )
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+    closes: list[tuple[str, int]] = []
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.comment_on_issue",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("comment failed")),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.close_issue",
+        lambda *, repo, issue_number: closes.append((repo, issue_number)),
+    )
+    monkeypatch.setattr("auto_research.automation.discover_github_repo", lambda cwd=None: "example/research")
+
+    result = run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-03",
+            push=False,
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    captured = capsys.readouterr()
     assert result.report_path.exists()
+    assert closes == []
+    assert "warning" in captured.err.lower()
+
+
+def test_run_daily_pipeline_tolerates_issue_close_failure(tmp_path, monkeypatch, capsys) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    request_dir = workspace / "issue-intake" / "llm-agents" / "alice" / "requests"
+    request_dir.mkdir(parents=True, exist_ok=True)
+    (request_dir.parent / "summary.md").write_text(
+        """# Issue Intake Summary: llm-agents / alice
+
+- Direction: `llm-agents`
+- GitHub Username: `alice`
+- Request Count: 1
+
+## Active Issues
+- #12: Track multi-agent papers (OPEN)
+""",
+        encoding="utf-8",
+    )
+    (request_dir / "12.md").write_text(
+        """---
+issue_number: 12
+title: "Track multi-agent papers"
+state: "OPEN"
+author_login: "alice"
+direction: "llm-agents"
+normalized_direction: "llm-agents"
+created_at: "2026-04-03T10:00:00Z"
+updated_at: "2026-04-03T11:00:00Z"
+url: "https://github.com/example/research/issues/12"
+---
+""",
+        encoding="utf-8",
+    )
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+    comments: list[tuple[str, int, str]] = []
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.comment_on_issue",
+        lambda *, repo, issue_number, body: comments.append((repo, issue_number, body)),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.close_issue",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("close failed")),
+    )
+    monkeypatch.setattr("auto_research.automation.discover_github_repo", lambda cwd=None: "example/research")
+
+    result = run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-03",
+            push=False,
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    captured = capsys.readouterr()
+    assert result.report_path.exists()
+    assert comments and comments[0][1] == 12
+    assert "warning" in captured.err.lower()
+
+
+def test_ensure_profile_exists_rejects_invalid_generated_profile(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    profile_path = workspace / "profile" / "interest-profile.md"
+
+    monkeypatch.setattr(
+        "auto_research.automation.build_fallback_profile_from_issue_intake",
+        lambda workspace, repo=None: type(
+            "Fallback",
+            (),
+            {
+                "markdown": "# Research Interest Profile\n\n## Core Interests\n- only one section\n",
+                "repo": repo,
+                "issue_numbers": [],
+                "source_keys": [],
+            },
+        )(),
+    )
+
+    from auto_research.automation import _ensure_profile_exists
+
+    with pytest.raises(ValueError, match="Generated invalid fallback interest profile"):
+        _ensure_profile_exists(workspace, profile_path)
 
 
 def test_run_daily_pipeline_backfills_manual_pdf(tmp_path, monkeypatch) -> None:

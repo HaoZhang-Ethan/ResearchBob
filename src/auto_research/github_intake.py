@@ -15,6 +15,7 @@ _SSH_REMOTE_RE = re.compile(r"^git@github\.com:(?P<owner>[^/]+)/(?P<repo>[^/]+?)
 _FRONTMATTER_RE = re.compile(r"\A---\n(?P<frontmatter>.*?)\n---\n?(?P<body>.*)\Z", re.DOTALL)
 _HEADING_RE = re.compile(r"^##\s+(?P<heading>[^\n]+)\n", re.MULTILINE)
 _SAFE_SEGMENT_RE = re.compile(r"[^a-z0-9]+")
+_BULLET_RE = re.compile(r"^- (?P<value>.+)$", re.MULTILINE)
 
 
 class IssueParseError(ValueError):
@@ -59,6 +60,14 @@ class IssueSyncResult:
     parsed_issue_count: int
     changed_request_count: int
     refreshed_summaries: list[Path]
+
+
+@dataclass(slots=True)
+class FallbackProfileResult:
+    markdown: str
+    repo: str | None
+    issue_numbers: list[int]
+    source_keys: list[str]
 
 
 IssueFetcher = Callable[[str, str, int], list[GitHubIssue]]
@@ -217,6 +226,121 @@ def _render_summary(direction: str, github_username: str, requests_dir: Path) ->
     return "\n".join(lines) + "\n"
 
 
+def _extract_summary_section(text: str, heading: str) -> list[str]:
+    pattern = re.compile(rf"^## {re.escape(heading)}\n(?P<body>.*?)(?=^## |\Z)", re.MULTILINE | re.DOTALL)
+    match = pattern.search(text)
+    if match is None:
+        return []
+    return [item.group("value").strip() for item in _BULLET_RE.finditer(match.group("body")) if item.group("value").strip()]
+
+
+def _dedupe(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in items:
+        normalized = item.strip()
+        if not normalized:
+            continue
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(normalized)
+    return ordered
+
+
+def _collect_issue_intake_sources(workspace: Path) -> list[tuple[str, str, str]]:
+    issue_root = workspace / "issue-intake"
+    if not issue_root.exists():
+        return []
+    sources: list[tuple[str, str, str]] = []
+    for direction_dir in sorted(path for path in issue_root.iterdir() if path.is_dir()):
+        for user_dir in sorted(path for path in direction_dir.iterdir() if path.is_dir()):
+            summary_path = user_dir / "summary.md"
+            if not summary_path.exists():
+                continue
+            sources.append((direction_dir.name, user_dir.name, summary_path.read_text(encoding="utf-8")))
+    return sources
+
+
+def _collect_issue_numbers_for_source(user_dir: Path) -> list[int]:
+    issue_numbers: list[int] = []
+    for request_path in sorted((user_dir / "requests").glob("*.md")):
+        metadata = _load_request_metadata(request_path)
+        value = metadata.get("issue_number", "").strip()
+        if value.isdigit():
+            issue_numbers.append(int(value))
+    return issue_numbers
+
+
+def render_profile_from_issue_intake(workspace: Path) -> str:
+    return build_fallback_profile_from_issue_intake(workspace).markdown
+
+
+def build_fallback_profile_from_issue_intake(
+    workspace: Path,
+    repo: str | None = None,
+) -> FallbackProfileResult:
+    sources = _collect_issue_intake_sources(workspace)
+    if not sources:
+        raise ValueError("No usable issue intake data available to generate an interest profile")
+
+    source_lines = [f"> - {direction} / {username}" for direction, username, _ in sources]
+    source_keys = [f"{direction}/{username}" for direction, username, _ in sources]
+    core_interests = _dedupe([direction for direction, _, _ in sources])
+    soft_boundaries: list[str] = []
+    exclusions: list[str] = []
+    current_phase_bias: list[str] = []
+    evaluation_heuristics: list[str] = []
+    open_questions: list[str] = []
+    issue_numbers: list[int] = []
+
+    for direction, _, text in sources:
+        requirements = _extract_summary_section(text, "Requirements")
+        constraints = _extract_summary_section(text, "Constraints")
+        notes = _extract_summary_section(text, "Notes")
+        active_issues = _extract_summary_section(text, "Active Issues")
+
+        current_phase_bias.extend(requirements)
+        exclusions.extend(constraints)
+        open_questions.extend([item for item in notes if "?" in item])
+        soft_boundaries.extend([item for item in notes if "?" not in item])
+        evaluation_heuristics.extend([item for item in requirements if "prefer" in item.lower() or "priority" in item.lower()])
+        soft_boundaries.extend([item for item in active_issues if direction not in item.lower()])
+
+    issue_root = workspace / "issue-intake"
+    for direction, username, _ in sources:
+        issue_numbers.extend(_collect_issue_numbers_for_source(issue_root / direction / username))
+
+    sections = {
+        "Core Interests": _dedupe(core_interests + current_phase_bias[:2]) or ["issue-intake derived research topics"],
+        "Soft Boundaries": _dedupe(soft_boundaries) or ["adjacent topics inferred from issue intake"],
+        "Exclusions": _dedupe(exclusions) or ["no explicit exclusions were provided in issue intake"],
+        "Current-Phase Bias": _dedupe(current_phase_bias) or ["focus on the active issue-intake directions"],
+        "Evaluation Heuristics": _dedupe(evaluation_heuristics) or ["prefer papers aligned with the current issue-intake requests"],
+        "Open Questions": _dedupe(open_questions) or ["which issue-intake directions should be prioritized next"],
+    }
+
+    lines = [
+        "# Research Interest Profile",
+        "",
+        f"> Auto-generated from GitHub issue intake on {_utc_now_iso()}.",
+        "> Sources:",
+    ]
+    lines.extend(source_lines)
+    lines.append("")
+    for section_name, items in sections.items():
+        lines.append(f"## {section_name}")
+        lines.extend(f"- {item}" for item in items)
+        lines.append("")
+    return FallbackProfileResult(
+        markdown="\n".join(lines).rstrip() + "\n",
+        repo=repo,
+        issue_numbers=sorted(set(issue_numbers)),
+        source_keys=source_keys,
+    )
+
+
 def sync_issues(
     config: IssueSyncConfig,
     *,
@@ -342,6 +466,24 @@ def fetch_github_issues(repo: str, state: str, limit: int) -> list[GitHubIssue]:
             )
         )
     return issues
+
+
+def comment_on_issue(*, repo: str, issue_number: int, body: str) -> None:
+    subprocess.run(
+        ["gh", "issue", "comment", str(issue_number), "--repo", repo, "--body", body],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+
+def close_issue(*, repo: str, issue_number: int) -> None:
+    subprocess.run(
+        ["gh", "issue", "close", str(issue_number), "--repo", repo],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
 
 
 def _stage_commit_push_issue_intake(workspace: Path, label: str) -> None:

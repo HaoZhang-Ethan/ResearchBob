@@ -5,13 +5,18 @@ import subprocess
 import pytest
 
 from auto_research.github_intake import (
+    FallbackProfileResult,
     GitHubIssue,
     IssueParseError,
     IssueSyncConfig,
     _stage_commit_push_issue_intake,
+    build_fallback_profile_from_issue_intake,
+    close_issue,
+    comment_on_issue,
     fetch_github_issues,
     parse_github_repo,
     parse_issue_body,
+    render_profile_from_issue_intake,
     sync_issues,
 )
 from auto_research.workspace import ensure_workspace
@@ -134,3 +139,113 @@ def test_stage_issue_intake_only_targets_issue_intake_subtree(tmp_path, monkeypa
     assert calls[0] == ["git", "add", "-f", str(workspace / "issue-intake")]
     assert ["git", "commit", "-m", "chore: sync issue intake 2026-04-03"] in calls
     assert ["git", "push"] in calls
+
+
+def test_render_profile_from_issue_intake_summaries(tmp_path) -> None:
+    workspace = tmp_path / "research-workspace"
+    summary_dir = workspace / "issue-intake" / "llm-agents" / "alice"
+    (summary_dir / "requests").mkdir(parents=True, exist_ok=True)
+    (summary_dir / "summary.md").write_text(
+        """# Issue Intake Summary: llm-agents / alice
+
+- Direction: `llm-agents`
+- GitHub Username: `alice`
+- Request Count: 1
+
+## Active Issues
+- #12: Track multi-agent papers (OPEN)
+
+## Requirements
+- prefer strong system design
+- focus on memory and orchestration
+
+## Constraints
+- avoid pure benchmark papers
+
+## Notes
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+
+    markdown = render_profile_from_issue_intake(workspace)
+
+    assert "llm-agents / alice" in markdown
+    assert "## Core Interests" in markdown
+    assert "## Open Questions" in markdown
+
+
+def test_render_profile_from_issue_intake_rejects_empty_workspace(tmp_path) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    with pytest.raises(ValueError, match="issue intake"):
+        render_profile_from_issue_intake(workspace)
+
+
+def test_build_fallback_profile_collects_issue_numbers(tmp_path) -> None:
+    workspace = tmp_path / "research-workspace"
+    request_dir = workspace / "issue-intake" / "llm-agents" / "alice" / "requests"
+    request_dir.mkdir(parents=True, exist_ok=True)
+    (request_dir.parent / "summary.md").write_text(
+        """# Issue Intake Summary: llm-agents / alice
+
+- Direction: `llm-agents`
+- GitHub Username: `alice`
+- Request Count: 1
+
+## Active Issues
+- #12: Track multi-agent papers (OPEN)
+""",
+        encoding="utf-8",
+    )
+    (request_dir / "12.md").write_text(
+        """---
+issue_number: 12
+title: "Track multi-agent papers"
+state: "OPEN"
+author_login: "alice"
+direction: "llm-agents"
+normalized_direction: "llm-agents"
+created_at: "2026-04-03T10:00:00Z"
+updated_at: "2026-04-03T11:00:00Z"
+url: "https://github.com/example/research/issues/12"
+---
+""",
+        encoding="utf-8",
+    )
+
+    result = build_fallback_profile_from_issue_intake(workspace, repo="example/research")
+
+    assert isinstance(result, FallbackProfileResult)
+    assert result.repo == "example/research"
+    assert result.issue_numbers == [12]
+    assert result.source_keys == ["llm-agents/alice"]
+
+
+def test_comment_on_issue_uses_gh_issue_comment(monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, capture_output, text, check):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("auto_research.github_intake.subprocess.run", fake_run)
+
+    comment_on_issue(repo="example/research", issue_number=12, body="done")
+
+    assert calls == [["gh", "issue", "comment", "12", "--repo", "example/research", "--body", "done"]]
+
+
+def test_close_issue_uses_gh_issue_close(monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, capture_output, text, check):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("auto_research.github_intake.subprocess.run", fake_run)
+
+    close_issue(repo="example/research", issue_number=12)
+
+    assert calls == [["gh", "issue", "close", "12", "--repo", "example/research"]]
