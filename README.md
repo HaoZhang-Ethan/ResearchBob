@@ -172,6 +172,15 @@ If `research-workspace/profile/interest-profile.md` is missing, `daily-pipeline`
 
 If that fallback profile generation is used and the run finishes successfully, the pipeline can also comment on and close the consumed GitHub issues on a best-effort basis.
 
+For split-network environments, prefer this two-step pattern:
+
+```bash
+PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace
+```
+
+This lets content generation happen in one network environment and GitHub push/comment/close happen later in another.
+
 ---
 
 ## What You Get

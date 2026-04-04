@@ -389,38 +389,88 @@ def _ensure_profile_exists_with_metadata(workspace: Path, profile_path: Path) ->
     return profile_path, fallback
 
 
-def _auto_close_consumed_issues(
+def _github_finalize_state_path(workspace: Path) -> Path:
+    return workspace / "pipeline" / "github-finalize.json"
+
+
+def _write_github_finalize_state(
     *,
+    workspace: Path,
     fallback,
     label: str,
     report_path: Path,
     daily_summary_path: Path,
-) -> None:
+) -> Path | None:
     if fallback is None or not getattr(fallback, "issue_numbers", None) or not getattr(fallback, "repo", None):
-        return
+        return None
 
-    repo = fallback.repo
-    for issue_number in fallback.issue_numbers:
+    state_path = _github_finalize_state_path(workspace)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        json.dumps(
+            {
+                "label": label,
+                "repo": fallback.repo,
+                "report_path": str(report_path),
+                "daily_summary_path": str(daily_summary_path),
+                "used_fallback_profile": True,
+                "consumed_issue_numbers": list(fallback.issue_numbers),
+                "source_keys": list(fallback.source_keys),
+                "status": "pending",
+                "created_at": utc_now_iso(),
+                "finalized_at": "",
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return state_path
+
+
+def finalize_github(workspace: Path) -> dict[str, object]:
+    state_path = _github_finalize_state_path(workspace)
+    if not state_path.exists():
+        raise ValueError("No pending GitHub finalize work found")
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    if state.get("status") == "completed":
+        return state
+
+    repo_root = workspace.parent if workspace.name == "research-workspace" else Path.cwd()
+    subprocess.run(["git", "push"], cwd=repo_root, check=True)
+
+    repo = str(state["repo"])
+    label = str(state["label"])
+    report_path = str(state["report_path"])
+    daily_summary_path = str(state["daily_summary_path"])
+    for issue_number in state.get("consumed_issue_numbers", []):
         body = (
             f"This request was incorporated into the completed daily paper summary workflow for `{label}`.\n\n"
             f"- Report: `{report_path}`\n"
             f"- Daily Summary: `{daily_summary_path}`"
         )
         try:
-            comment_on_issue(repo=repo, issue_number=issue_number, body=body)
+            comment_on_issue(repo=repo, issue_number=int(issue_number), body=body)
         except Exception as exc:
             print(
-                f"Warning: unable to comment on consumed issue #{issue_number}: {exc}",
+                f"Warning: unable to comment on finalize issue #{issue_number}: {exc}",
                 file=sys.stderr,
             )
             continue
         try:
-            close_issue(repo=repo, issue_number=issue_number)
+            close_issue(repo=repo, issue_number=int(issue_number))
         except Exception as exc:
             print(
-                f"Warning: unable to close consumed issue #{issue_number}: {exc}",
+                f"Warning: unable to close finalize issue #{issue_number}: {exc}",
                 file=sys.stderr,
             )
+
+    state["status"] = "completed"
+    state["finalized_at"] = utc_now_iso()
+    state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return state
 
 
 def run_daily_pipeline(
@@ -513,15 +563,16 @@ def run_daily_pipeline(
         ris_path=ris_path,
     )
 
-    if config.push:
-        _stage_commit_push(workspace, label)
-
-    _auto_close_consumed_issues(
+    _write_github_finalize_state(
+        workspace=workspace,
         fallback=fallback,
         label=label,
         report_path=report_path,
         daily_summary_path=daily_summary_path,
     )
+
+    if config.push:
+        _stage_commit_push(workspace, label)
 
     return PipelineResult(
         selected_entries=selected_entries,

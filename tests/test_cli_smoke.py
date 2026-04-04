@@ -61,3 +61,30 @@ def test_build_parser_includes_sync_issues_command() -> None:
 
     assert result.returncode == 0
     assert "sync-issues" in result.stdout
+
+
+def test_finalize_github_cli_runs(monkeypatch, capsys, tmp_path) -> None:
+    monkeypatch.setattr(
+        "auto_research.cli.finalize_github",
+        lambda workspace: {"status": "completed", "label": "2026-04-04", "consumed_issue_numbers": [12]},
+    )
+
+    exit_code = cli_main(["finalize-github", "--workspace", str(tmp_path / "research-workspace")])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "status=completed" in captured.out
+    assert "consumed_issues=1" in captured.out
+
+
+def test_build_parser_includes_finalize_github_command() -> None:
+    result = run(
+        [sys.executable, "-m", "auto_research.cli", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "PYTHONPATH": "src"},
+    )
+
+    assert result.returncode == 0
+    assert "finalize-github" in result.stdout

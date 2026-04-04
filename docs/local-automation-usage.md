@@ -32,6 +32,13 @@ If `research-workspace/profile/interest-profile.md` is missing, `daily-pipeline`
 
 When that fallback path is used and the run succeeds, the workflow can also comment on and close the consumed GitHub issues on a best-effort basis.
 
+If GitHub access needs a different network environment than arXiv/model access, use:
+
+```bash
+PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace
+```
+
 ## GitHub Issue Intake
 
 Use `sync-issues` when you want to pull structured demand from GitHub issues in the current repository.

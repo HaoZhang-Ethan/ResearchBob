@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from auto_research.automation import PipelineConfig, run_daily_pipeline
+from auto_research.automation import PipelineConfig, finalize_github, run_daily_pipeline
 from auto_research.models import RegistryEntry
 from auto_research.openai_client import OpenAIResponsesClient, SummaryArtifact
 from auto_research.workspace import ensure_workspace
@@ -342,7 +342,301 @@ def test_run_daily_pipeline_generates_profile_from_issue_intake(tmp_path, monkey
     assert "Auto-generated from GitHub issue intake" in profile_path.read_text(encoding="utf-8")
 
 
-def test_run_daily_pipeline_auto_closes_consumed_issues(tmp_path, monkeypatch) -> None:
+def test_run_daily_pipeline_writes_pending_finalize_state(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    request_dir = workspace / "issue-intake" / "llm-agents" / "alice" / "requests"
+    request_dir.mkdir(parents=True, exist_ok=True)
+    (request_dir.parent / "summary.md").write_text(
+        """# Issue Intake Summary: llm-agents / alice
+
+- Direction: `llm-agents`
+- GitHub Username: `alice`
+- Request Count: 1
+
+## Active Issues
+- #12: Track multi-agent papers (OPEN)
+""",
+        encoding="utf-8",
+    )
+    (request_dir / "12.md").write_text(
+        """---
+issue_number: 12
+title: "Track multi-agent papers"
+state: "OPEN"
+author_login: "alice"
+direction: "llm-agents"
+normalized_direction: "llm-agents"
+created_at: "2026-04-03T10:00:00Z"
+updated_at: "2026-04-03T11:00:00Z"
+url: "https://github.com/example/research/issues/12"
+---
+""",
+        encoding="utf-8",
+    )
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+    monkeypatch.setattr("auto_research.automation.discover_github_repo", lambda cwd=None: "example/research")
+    monkeypatch.setattr("auto_research.automation.comment_on_issue", lambda **kwargs: None)
+    monkeypatch.setattr("auto_research.automation.close_issue", lambda **kwargs: None)
+
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-04",
+            push=False,
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    finalize_path = workspace / "pipeline" / "github-finalize.json"
+    assert finalize_path.exists()
+
+
+def test_run_daily_pipeline_without_fallback_skips_finalize_state(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    profile_path = workspace / "profile" / "interest-profile.md"
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-04",
+            push=False,
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    assert not (workspace / "pipeline" / "github-finalize.json").exists()
+
+
+def test_finalize_github_runs_push_then_issue_updates(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    state_path = workspace / "pipeline" / "github-finalize.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        """{
+  "label": "2026-04-04",
+  "repo": "example/research",
+  "report_path": "/tmp/report.md",
+  "daily_summary_path": "/tmp/summary.md",
+  "used_fallback_profile": true,
+  "consumed_issue_numbers": [12],
+  "source_keys": ["llm-agents/alice"],
+  "status": "pending",
+  "created_at": "2026-04-04T00:00:00Z",
+  "finalized_at": ""
+}
+""",
+        encoding="utf-8",
+    )
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(
+        "auto_research.automation.subprocess.run",
+        lambda cmd, cwd, check: calls.append(("push", cmd)) or None,
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.comment_on_issue",
+        lambda *, repo, issue_number, body: calls.append(("comment", repo, issue_number, body)),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.close_issue",
+        lambda *, repo, issue_number: calls.append(("close", repo, issue_number)),
+    )
+
+    result = finalize_github(workspace)
+
+    assert result["status"] == "completed"
+    assert calls[0] == ("push", ["git", "push"])
+    assert calls[1][0] == "comment"
+    assert calls[2] == ("close", "example/research", 12)
+
+
+def test_finalize_github_fails_when_state_missing(tmp_path) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    with pytest.raises(ValueError, match="No pending GitHub finalize work"):
+        finalize_github(workspace)
+
+
+def test_finalize_github_skips_completed_state(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    state_path = workspace / "pipeline" / "github-finalize.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        """{
+  "label": "2026-04-04",
+  "repo": "example/research",
+  "report_path": "/tmp/report.md",
+  "daily_summary_path": "/tmp/summary.md",
+  "used_fallback_profile": true,
+  "consumed_issue_numbers": [12],
+  "source_keys": ["llm-agents/alice"],
+  "status": "completed",
+  "created_at": "2026-04-04T00:00:00Z",
+  "finalized_at": "2026-04-04T01:00:00Z"
+}
+""",
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        "auto_research.automation.subprocess.run",
+        lambda **kwargs: calls.append("push") or None,
+    )
+
+    result = finalize_github(workspace)
+
+    assert result["status"] == "completed"
+    assert calls == []
+
+
+def test_finalize_github_push_failure_leaves_state_pending(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    state_path = workspace / "pipeline" / "github-finalize.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        """{
+  "label": "2026-04-04",
+  "repo": "example/research",
+  "report_path": "/tmp/report.md",
+  "daily_summary_path": "/tmp/summary.md",
+  "used_fallback_profile": true,
+  "consumed_issue_numbers": [12],
+  "source_keys": ["llm-agents/alice"],
+  "status": "pending",
+  "created_at": "2026-04-04T00:00:00Z",
+  "finalized_at": ""
+}
+""",
+        encoding="utf-8",
+    )
+    actions: list[str] = []
+
+    def fail_push(cmd, cwd, check):
+        actions.append("push")
+        raise RuntimeError("push failed")
+
+    monkeypatch.setattr("auto_research.automation.subprocess.run", fail_push)
+    monkeypatch.setattr(
+        "auto_research.automation.comment_on_issue",
+        lambda **kwargs: actions.append("comment"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.close_issue",
+        lambda **kwargs: actions.append("close"),
+    )
+
+    with pytest.raises(RuntimeError, match="push failed"):
+        finalize_github(workspace)
+
+    state = state_path.read_text(encoding="utf-8")
+    assert '"status": "pending"' in state
+    assert actions == ["push"]
+
+
+def test_run_daily_pipeline_writes_finalize_state_instead_of_closing_issues(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
     ensure_workspace(workspace)
     request_dir = workspace / "issue-intake" / "llm-agents" / "alice" / "requests"
@@ -388,9 +682,6 @@ url: "https://github.com/example/research/issues/12"
         relevance_band="high-match",
         source="arxiv",
     )
-    comments: list[tuple[str, int, str]] = []
-    closes: list[tuple[str, int]] = []
-
     monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
     monkeypatch.setattr(
         "auto_research.automation.download_pdf",
@@ -414,14 +705,6 @@ url: "https://github.com/example/research/issues/12"
             },
         ),
     )
-    monkeypatch.setattr(
-        "auto_research.automation.comment_on_issue",
-        lambda *, repo, issue_number, body: comments.append((repo, issue_number, body)),
-    )
-    monkeypatch.setattr(
-        "auto_research.automation.close_issue",
-        lambda *, repo, issue_number: closes.append((repo, issue_number)),
-    )
     monkeypatch.setattr("auto_research.automation.discover_github_repo", lambda cwd=None: "example/research")
 
     run_daily_pipeline(
@@ -436,10 +719,12 @@ url: "https://github.com/example/research/issues/12"
         llm_client=FakeLLMClient(),
     )
 
-    assert comments and comments[0][0] == "example/research"
-    assert comments[0][1] == 12
-    assert "2026-04-03" in comments[0][2]
-    assert closes == [("example/research", 12)]
+    state_path = workspace / "pipeline" / "github-finalize.json"
+    assert state_path.exists()
+    state = state_path.read_text(encoding="utf-8")
+    assert '"repo": "example/research"' in state
+    assert '"consumed_issue_numbers": [' in state
+    assert '12' in state
 
 
 def test_run_daily_pipeline_fails_when_profile_missing_and_no_issue_intake(tmp_path) -> None:
@@ -536,7 +821,7 @@ def test_run_daily_pipeline_preserves_existing_profile(tmp_path, monkeypatch) ->
     assert profile_path.read_text(encoding="utf-8") == valid_profile_text
 
 
-def test_run_daily_pipeline_skips_auto_close_with_existing_profile(tmp_path, monkeypatch) -> None:
+def test_run_daily_pipeline_with_existing_profile_skips_finalize_state(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
     ensure_workspace(workspace)
     profile_path = workspace / "profile" / "interest-profile.md"
@@ -563,8 +848,6 @@ def test_run_daily_pipeline_skips_auto_close_with_existing_profile(tmp_path, mon
 """,
         encoding="utf-8",
     )
-    comments: list[tuple[str, int, str]] = []
-    closes: list[tuple[str, int]] = []
     entry = RegistryEntry(
         arxiv_id="2603.23566v1",
         title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
@@ -599,15 +882,6 @@ def test_run_daily_pipeline_skips_auto_close_with_existing_profile(tmp_path, mon
             },
         ),
     )
-    monkeypatch.setattr(
-        "auto_research.automation.comment_on_issue",
-        lambda *, repo, issue_number, body: comments.append((repo, issue_number, body)),
-    )
-    monkeypatch.setattr(
-        "auto_research.automation.close_issue",
-        lambda *, repo, issue_number: closes.append((repo, issue_number)),
-    )
-
     run_daily_pipeline(
         PipelineConfig(
             workspace=workspace,
@@ -620,77 +894,33 @@ def test_run_daily_pipeline_skips_auto_close_with_existing_profile(tmp_path, mon
         llm_client=FakeLLMClient(),
     )
 
-    assert comments == []
-    assert closes == []
+    assert not (workspace / "pipeline" / "github-finalize.json").exists()
 
 
-def test_run_daily_pipeline_tolerates_issue_comment_failure(tmp_path, monkeypatch, capsys) -> None:
+def test_finalize_github_tolerates_issue_comment_failure(tmp_path, monkeypatch, capsys) -> None:
     workspace = tmp_path / "research-workspace"
     ensure_workspace(workspace)
-    request_dir = workspace / "issue-intake" / "llm-agents" / "alice" / "requests"
-    request_dir.mkdir(parents=True, exist_ok=True)
-    (request_dir.parent / "summary.md").write_text(
-        """# Issue Intake Summary: llm-agents / alice
-
-- Direction: `llm-agents`
-- GitHub Username: `alice`
-- Request Count: 1
-
-## Active Issues
-- #12: Track multi-agent papers (OPEN)
+    state_path = workspace / "pipeline" / "github-finalize.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        """{
+  "label": "2026-04-04",
+  "repo": "example/research",
+  "report_path": "/tmp/report.md",
+  "daily_summary_path": "/tmp/summary.md",
+  "used_fallback_profile": true,
+  "consumed_issue_numbers": [12],
+  "source_keys": ["llm-agents/alice"],
+  "status": "pending",
+  "created_at": "2026-04-04T00:00:00Z",
+  "finalized_at": ""
+}
 """,
         encoding="utf-8",
-    )
-    (request_dir / "12.md").write_text(
-        """---
-issue_number: 12
-title: "Track multi-agent papers"
-state: "OPEN"
-author_login: "alice"
-direction: "llm-agents"
-normalized_direction: "llm-agents"
-created_at: "2026-04-03T10:00:00Z"
-updated_at: "2026-04-03T11:00:00Z"
-url: "https://github.com/example/research/issues/12"
----
-""",
-        encoding="utf-8",
-    )
-    entry = RegistryEntry(
-        arxiv_id="2603.23566v1",
-        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
-        summary="Operator optimization on Ascend NPUs.",
-        pdf_url="https://arxiv.org/pdf/2603.23566v1",
-        published_at="2026-03-24T08:54:53Z",
-        updated_at="2026-03-24T08:54:53Z",
-        relevance_band="high-match",
-        source="arxiv",
     )
     closes: list[tuple[str, int]] = []
 
-    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
-    monkeypatch.setattr(
-        "auto_research.automation.download_pdf",
-        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
-    )
-    monkeypatch.setattr(
-        "auto_research.automation.build_detailed_analysis",
-        lambda **kwargs: (
-            "Example extracted PDF text",
-            {
-                "one_paragraph_summary": "Detailed summary.",
-                "problem": "Detailed problem.",
-                "solution": "Detailed solution.",
-                "key_mechanism": "Detailed mechanism.",
-                "assumptions": "Detailed assumptions.",
-                "strengths": "Detailed strengths.",
-                "weaknesses": "Detailed weaknesses.",
-                "what_is_missing": "Detailed missing.",
-                "why_it_matters": "Detailed relevance.",
-                "follow_up_ideas": "Detailed follow-up.",
-            },
-        ),
-    )
+    monkeypatch.setattr("auto_research.automation.subprocess.run", lambda cmd, cwd, check: None)
     monkeypatch.setattr(
         "auto_research.automation.comment_on_issue",
         lambda **kwargs: (_ for _ in ()).throw(RuntimeError("comment failed")),
@@ -699,93 +929,39 @@ url: "https://github.com/example/research/issues/12"
         "auto_research.automation.close_issue",
         lambda *, repo, issue_number: closes.append((repo, issue_number)),
     )
-    monkeypatch.setattr("auto_research.automation.discover_github_repo", lambda cwd=None: "example/research")
 
-    result = run_daily_pipeline(
-        PipelineConfig(
-            workspace=workspace,
-            top_k=1,
-            prefilter_limit=5,
-            max_results=5,
-            label="2026-04-03",
-            push=False,
-        ),
-        llm_client=FakeLLMClient(),
-    )
+    result = finalize_github(workspace)
 
     captured = capsys.readouterr()
-    assert result.report_path.exists()
+    assert result["status"] == "completed"
     assert closes == []
     assert "warning" in captured.err.lower()
 
 
-def test_run_daily_pipeline_tolerates_issue_close_failure(tmp_path, monkeypatch, capsys) -> None:
+def test_finalize_github_tolerates_issue_close_failure(tmp_path, monkeypatch, capsys) -> None:
     workspace = tmp_path / "research-workspace"
     ensure_workspace(workspace)
-    request_dir = workspace / "issue-intake" / "llm-agents" / "alice" / "requests"
-    request_dir.mkdir(parents=True, exist_ok=True)
-    (request_dir.parent / "summary.md").write_text(
-        """# Issue Intake Summary: llm-agents / alice
-
-- Direction: `llm-agents`
-- GitHub Username: `alice`
-- Request Count: 1
-
-## Active Issues
-- #12: Track multi-agent papers (OPEN)
+    state_path = workspace / "pipeline" / "github-finalize.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        """{
+  "label": "2026-04-04",
+  "repo": "example/research",
+  "report_path": "/tmp/report.md",
+  "daily_summary_path": "/tmp/summary.md",
+  "used_fallback_profile": true,
+  "consumed_issue_numbers": [12],
+  "source_keys": ["llm-agents/alice"],
+  "status": "pending",
+  "created_at": "2026-04-04T00:00:00Z",
+  "finalized_at": ""
+}
 """,
         encoding="utf-8",
-    )
-    (request_dir / "12.md").write_text(
-        """---
-issue_number: 12
-title: "Track multi-agent papers"
-state: "OPEN"
-author_login: "alice"
-direction: "llm-agents"
-normalized_direction: "llm-agents"
-created_at: "2026-04-03T10:00:00Z"
-updated_at: "2026-04-03T11:00:00Z"
-url: "https://github.com/example/research/issues/12"
----
-""",
-        encoding="utf-8",
-    )
-    entry = RegistryEntry(
-        arxiv_id="2603.23566v1",
-        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
-        summary="Operator optimization on Ascend NPUs.",
-        pdf_url="https://arxiv.org/pdf/2603.23566v1",
-        published_at="2026-03-24T08:54:53Z",
-        updated_at="2026-03-24T08:54:53Z",
-        relevance_band="high-match",
-        source="arxiv",
     )
     comments: list[tuple[str, int, str]] = []
 
-    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
-    monkeypatch.setattr(
-        "auto_research.automation.download_pdf",
-        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
-    )
-    monkeypatch.setattr(
-        "auto_research.automation.build_detailed_analysis",
-        lambda **kwargs: (
-            "Example extracted PDF text",
-            {
-                "one_paragraph_summary": "Detailed summary.",
-                "problem": "Detailed problem.",
-                "solution": "Detailed solution.",
-                "key_mechanism": "Detailed mechanism.",
-                "assumptions": "Detailed assumptions.",
-                "strengths": "Detailed strengths.",
-                "weaknesses": "Detailed weaknesses.",
-                "what_is_missing": "Detailed missing.",
-                "why_it_matters": "Detailed relevance.",
-                "follow_up_ideas": "Detailed follow-up.",
-            },
-        ),
-    )
+    monkeypatch.setattr("auto_research.automation.subprocess.run", lambda cmd, cwd, check: None)
     monkeypatch.setattr(
         "auto_research.automation.comment_on_issue",
         lambda *, repo, issue_number, body: comments.append((repo, issue_number, body)),
@@ -794,22 +970,11 @@ url: "https://github.com/example/research/issues/12"
         "auto_research.automation.close_issue",
         lambda **kwargs: (_ for _ in ()).throw(RuntimeError("close failed")),
     )
-    monkeypatch.setattr("auto_research.automation.discover_github_repo", lambda cwd=None: "example/research")
 
-    result = run_daily_pipeline(
-        PipelineConfig(
-            workspace=workspace,
-            top_k=1,
-            prefilter_limit=5,
-            max_results=5,
-            label="2026-04-03",
-            push=False,
-        ),
-        llm_client=FakeLLMClient(),
-    )
+    result = finalize_github(workspace)
 
     captured = capsys.readouterr()
-    assert result.report_path.exists()
+    assert result["status"] == "completed"
     assert comments and comments[0][1] == 12
     assert "warning" in captured.err.lower()
 

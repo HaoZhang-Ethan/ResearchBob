@@ -17,7 +17,7 @@ from auto_research.profile import validate_interest_profile_text
 from auto_research.registry import RegistryCorruptionError
 from auto_research.report import compose_report
 from auto_research.workspace import ensure_workspace
-from auto_research.automation import PipelineConfig, run_daily_pipeline
+from auto_research.automation import PipelineConfig, finalize_github, run_daily_pipeline
 
 
 def _raw_argv(argv: Sequence[str] | None) -> list[str]:
@@ -71,6 +71,9 @@ def build_parser() -> argparse.ArgumentParser:
     sync_issues_parser.add_argument("--state", choices=("open", "all"), default="open")
     sync_issues_parser.add_argument("--limit", type=int, default=100)
     sync_issues_parser.add_argument("--push", action="store_true")
+
+    finalize_parser = subparsers.add_parser("finalize-github")
+    finalize_parser.add_argument("--workspace", default="research-workspace")
 
     return parser
 
@@ -262,6 +265,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         for summary_path in result.refreshed_summaries:
             print(summary_path)
+        return 0
+
+    if args.command == "finalize-github":
+        try:
+            result = finalize_github(Path(args.workspace))
+        except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
+            print(f"GitHub finalize failed: {exc}", file=sys.stderr)
+            return 1
+        print(
+            " ".join(
+                [
+                    f"status={result.get('status', '')}",
+                    f"label={result.get('label', '')}",
+                    f"consumed_issues={len(result.get('consumed_issue_numbers', []))}",
+                ]
+            )
+        )
         return 0
 
     return 0
