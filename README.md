@@ -2,38 +2,175 @@
 
 [Jump to Chinese / 跳转中文](#中文说明)
 
-ResearchBob is a local paper workflow for turning GitHub issue requests into daily arXiv summaries.
-
-It is designed around one practical loop:
-
-1. a user submits a request through GitHub issue,
-2. the local pipeline pulls the request,
-3. the system generates a daily paper summary,
-4. the maintainer later finalizes GitHub-side actions in a network environment that can reach GitHub.
+ResearchBob is a local research workflow for collecting ideas, discovering papers, and producing periodic paper summaries from GitHub issue requests.
 
 ---
 
-## To the User
+## 1. Project Overview
 
-If you are here to submit a request and read the output, this is the only part you need.
+### What It Is
 
-### What This Does
+ResearchBob is a local workflow for:
 
-You can open a GitHub issue in this repository to describe a topic, direction, or constraint for the daily paper summary workflow.
+- collecting research directions from GitHub issues
+- fetching and filtering arXiv papers
+- generating daily paper summaries and supporting artifacts
+- providing reusable research-oriented Codex skills
 
-This is not an on-demand paper analysis service.
+### Motivation
 
-It is a best-effort daily summary workflow that runs on my laptop.
+For research work, the bottleneck is usually not access to papers, but attention:
 
-That means:
+- too many papers are published
+- interesting ideas are easy to miss
+- user requirements are often scattered in notes or chat
+- it is hard to consistently turn broad directions into a small set of worth-reading papers
 
-- requests are collected through GitHub issues
-- summaries are generated in batches, not instantly
-- timing is not guaranteed
+ResearchBob is built to reduce that friction.
 
-### How to Submit a Request
+### How It Works
 
-Open a GitHub issue with this minimal format:
+At a high level:
+
+1. a user submits a direction or requirement, usually through a GitHub issue
+2. the local workflow syncs those requests into the workspace
+3. the pipeline uses an interest profile to fetch and rank papers
+4. the system writes reports, summaries, and export artifacts
+5. GitHub-side actions can be finalized later in a separate network environment
+
+### Strengths and Limits
+
+**Strengths**
+
+- simple issue-driven request flow
+- local-first and easy to inspect
+- works well for periodic paper discovery and summarization
+- supports split-network execution through `finalize-github`
+- also includes reusable Codex research skills
+
+**Limits**
+
+- not an on-demand paper analysis service
+- timing is best-effort because it runs on a personal laptop
+- current pipeline is single-workspace, not multi-tenant
+- network and proxy setup may need different handling for arXiv/model access and GitHub access
+
+---
+
+## 2. Main Features
+
+| Feature | What It Does | Best For | Strengths | Limits |
+|---|---|---|---|---|
+| Automatic idea collection and discovery | Turns requests into periodic paper discovery and daily summaries | People who want recurring research monitoring | Structured input, repeatable workflow, local artifacts | Not instant, depends on scheduled/local execution |
+| Research skill toolkit | Provides reusable Codex skills for research-related tasks | People who want interactive assistance | Reusable, modular, skill-oriented | Separate from the automated periodic pipeline |
+
+---
+
+## 3. Feature 1: Automatic Idea Collection and Discovery
+
+### What It Is
+
+This feature turns a research direction into a recurring paper summary workflow.
+
+Typical outputs include:
+
+- daily report markdown
+- daily summary markdown
+- selected paper artifacts
+- RIS export
+- GitHub-side follow-up state for consumed requests
+
+### Usage Mode 1: Local Deployment
+
+#### What It Is
+
+This is the operator view.
+
+You run the workflow locally and let it:
+
+- sync issue requests
+- build or reuse the profile
+- discover and summarize papers
+- optionally finalize GitHub-side actions later
+
+#### How to Use It
+
+Typical flow:
+
+```bash
+PYTHONPATH=src python -m auto_research.cli init-workspace --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace
+```
+
+Important commands:
+
+- `sync-issues`
+  pulls GitHub issues into `research-workspace/issue-intake/`
+- `daily-pipeline`
+  generates the daily summary outputs
+- `finalize-github`
+  runs `git push`, comments on consumed issues, and closes them
+
+#### Deploy It With AI
+
+If you want an AI assistant to help deploy the local workflow, paste:
+
+```text
+Please help me set up this repository as a local daily paper summary workflow on my machine.
+
+Repository path: /path/to/ResearchBob
+Workspace path: /path/to/ResearchBob/research-workspace
+
+Tasks:
+1. Initialize the workspace if needed.
+2. Tell me which environment variables or `.env.local` values I still need to provide.
+3. Verify the CLI commands for `sync-issues`, `daily-pipeline`, and `finalize-github`.
+4. Show me the exact commands to run the workflow end to end.
+5. Call out any proxy or network split I may need between paper generation and GitHub finalize.
+```
+
+### Usage Mode 2: GitHub Issue
+
+#### What It Is
+
+This is the request-submission view.
+
+Users submit directions, requirements, and constraints through GitHub issues in this repository, and the system periodically folds those requests into the paper summary workflow.
+
+#### How to Use It
+
+Users only need to submit issues in the required format.
+
+Operators later run:
+
+```bash
+PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace
+```
+
+#### User Side
+
+If you are only submitting requests, this is the part that matters.
+
+In this repository, you can directly open an issue and the project will periodically produce:
+
+- a daily report
+- a daily summary
+- selected paper artifacts
+- supporting exports
+
+Important output directories:
+
+```text
+research-workspace/reports/daily/
+research-workspace/papers/
+research-workspace/exports/zotero/
+```
+
+Issue format:
 
 ```md
 ---
@@ -54,30 +191,34 @@ direction: llm-agents
 如果有开源实现，也可以顺手记一下。
 ```
 
-Rules:
+Details:
 
 - the body must start with YAML frontmatter
 - `direction` is required
-- the issue title is free-form
-- `Background` / `Requirements` / `Constraints` / `Notes` are recommended but not all mandatory
+- the title is free-form
+- `Background` / `Requirements` / `Constraints` / `Notes` are recommended
+- this workflow is periodic, not instant
+- timing is best-effort because the system runs locally on a laptop
 
-### What You Should Expect
+#### Developer Side
 
-After your issue is processed:
+If you do not deploy the project, you do not need to care about this section.
 
-- the request may be folded into the next daily paper summary
-- the system may comment on the issue when that request has been consumed
-- the issue may then be closed as part of the GitHub finalize step
+This side is responsible for:
 
-### Important Limits
+- syncing issues into `research-workspace/issue-intake/`
+- running the daily summary pipeline
+- optionally splitting content generation and GitHub finalization across two network environments
 
-- this workflow is only for daily paper summaries
-- it does not promise immediate execution
-- because it runs on a personal laptop, queue time and completion time are best-effort
+Key details:
 
-### Prompt for Issue Drafting
+- `daily-pipeline` may auto-generate `profile/interest-profile.md` if it is missing
+- `finalize-github` reads `research-workspace/pipeline/github-finalize.json`
+- `finalize-github` exists so GitHub actions can run separately from arXiv/model calls
 
-If you want an AI assistant to turn rough notes into a valid issue, you can paste:
+#### Draft the Issue With AI
+
+If you want an AI assistant to turn rough notes into a valid issue, paste:
 
 ```text
 Please turn my request into a GitHub issue for the daily paper summary workflow in this repository.
@@ -98,152 +239,55 @@ Here is my raw request:
 
 ---
 
-## To the Developer
+## 4. Feature 2: Research Skill Toolkit
 
-This section is for the person operating the local workflow.
+### What It Is
 
-### Workflow
+This repository also includes reusable Codex skills for research-related work outside the periodic automation loop.
 
-The intended operating flow is:
+You can use them for:
 
-```bash
-PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace
-PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace
-PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace
-```
+- interest profile editing
+- paper intake and normalization
+- paper review simulation
+- problem-solution extraction
+- report composition
 
-Responsibilities:
+### Skill Table
 
-- `sync-issues`
-  pulls GitHub issues into `research-workspace/issue-intake/`
-- `daily-pipeline`
-  generates paper outputs and daily summary artifacts
-- `finalize-github`
-  runs `git push`, comments on consumed issues, and closes them
+| Skill | What It Does | Typical Use |
+|---|---|---|
+| `research-interest-profile` | Helps define or revise research interests | Maintaining the input profile |
+| `paper-intake-and-normalize` | Helps fetch and normalize paper candidates | Interactive paper intake |
+| `paper-review-simulator` | Simulates reviewer-style criticism | Draft review before submission |
+| `problem-solution-extractor` | Extracts problem/solution structure from papers | Structured reading |
+| `report-composer` | Helps compose paper reports | Interactive report generation |
 
-### Why `finalize-github` Exists
+### How to Use It
 
-Some environments can reach arXiv and model gateways only under one proxy setup, while GitHub may require another.
+You can install the skill folders into your Codex skills directory and use them interactively.
 
-So the workflow is intentionally split:
-
-- `daily-pipeline` can run in the environment that works for arXiv and model calls
-- `finalize-github` can run later in the environment that works for GitHub
-
-### Workspace Layout
-
-Important paths:
+Example prompts:
 
 ```text
-research-workspace/
-├── profile/
-│   └── interest-profile.md
-├── issue-intake/
-│   └── <direction>/<github-username>/
-│       ├── profile.json
-│       ├── summary.md
-│       └── requests/<issue-number>.md
-├── papers/
-├── reports/
-│   ├── daily/
-│   └── longterm/
-├── exports/
-│   └── zotero/
-└── pipeline/
-    ├── run-history.jsonl
-    └── github-finalize.json
+Use $research-interest-profile to revise my research profile.
+Use $paper-intake-and-normalize to fetch today's arXiv papers.
+Use $paper-review-simulator to critique my paper draft before submission.
+Use $problem-solution-extractor to analyze this paper.
+Use $report-composer to generate today's report.
 ```
 
-### Fallback Profile Behavior
+Skill directories:
 
-If `research-workspace/profile/interest-profile.md` is missing:
+- [research-interest-profile](skills/research-interest-profile/SKILL.md)
+- [paper-intake-and-normalize](skills/paper-intake-and-normalize/SKILL.md)
+- [paper-review-simulator](skills/paper-review-simulator/SKILL.md)
+- [problem-solution-extractor](skills/problem-solution-extractor/SKILL.md)
+- [report-composer](skills/report-composer/SKILL.md)
 
-- `daily-pipeline` will try to synthesize it from `research-workspace/issue-intake/`
-- the synthesized profile is written to `profile/interest-profile.md`
-- the run continues only if that generated profile passes validation
+### Install It With AI
 
-If the profile already exists:
-
-- it is used as-is
-- it is not overwritten
-
-### GitHub Finalize Behavior
-
-`finalize-github` uses `research-workspace/pipeline/github-finalize.json`.
-
-Behavior:
-
-- if the file is missing, there is no pending GitHub finalize work
-- if the file is `pending`, the command runs `git push`, then issue comment, then issue close
-- if the file is already `completed`, the command does not repeat work
-
-### Network Notes
-
-Common pattern:
-
-- `sync-issues` and `finalize-github` need GitHub connectivity
-- `daily-pipeline` needs arXiv and model connectivity
-
-If proxy variables break one side of the workflow, run the commands under different environments.
-
-Example without proxy variables:
-
-```bash
-env -u all_proxy -u ALL_PROXY -u http_proxy -u HTTP_PROXY -u https_proxy -u HTTPS_PROXY \
-PYTHONPATH=src \
-python -m auto_research.cli daily-pipeline --workspace research-workspace
-```
-
-### Setup
-
-Initialize a workspace:
-
-```bash
-PYTHONPATH=src python -m auto_research.cli init-workspace --workspace research-workspace
-```
-
-Set local config in `.env.local`:
-
-```bash
-OPENAI_API_KEY=your-key
-OPENAI_BASE_URL=http://your-gateway
-AUTO_RESEARCH_MODEL=gpt-5.4
-```
-
-### CLI Commands
-
-Available commands:
-
-- `init-workspace`
-- `validate-profile`
-- `intake`
-- `validate-extraction`
-- `compose-report`
-- `daily-pipeline`
-- `sync-issues`
-- `finalize-github`
-
-### Prompt for Local Deployment
-
-If you want an AI assistant to set up the local workflow, you can paste:
-
-```text
-Please help me set up this repository as a local daily paper summary workflow on my machine.
-
-Repository path: /path/to/ResearchBob
-Workspace path: /path/to/ResearchBob/research-workspace
-
-Tasks:
-1. Initialize the workspace if needed.
-2. Tell me which environment variables or `.env.local` values I still need to provide.
-3. Verify the CLI commands for `sync-issues`, `daily-pipeline`, and `finalize-github`.
-4. Show me the exact commands to run the workflow end to end.
-5. Call out any proxy or network split I may need between paper generation and GitHub finalize.
-```
-
-### Prompt for Codex Skill Installation
-
-If you want an AI assistant to install the reusable Codex skills, you can paste:
+If you want an AI assistant to install the reusable Codex skills, paste:
 
 ```text
 Please install the Codex skills from this repository into my local Codex skills directory.
@@ -261,41 +305,170 @@ Use symlinks for these skill folders:
 After installation, verify the links exist and show me the exact paths that were created.
 ```
 
-### Included Codex Skills
-
-This repository also ships reusable Codex skills:
-
-- [research-interest-profile](skills/research-interest-profile/SKILL.md)
-- [paper-intake-and-normalize](skills/paper-intake-and-normalize/SKILL.md)
-- [paper-review-simulator](skills/paper-review-simulator/SKILL.md)
-- [problem-solution-extractor](skills/problem-solution-extractor/SKILL.md)
-- [report-composer](skills/report-composer/SKILL.md)
-
 ---
 
 ## 中文说明
 
-## To the User
+## 1. 项目概述
 
-如果你只是来提需求、看日报，这一段就够了。
+### 简介
 
-### 这套系统做什么
+ResearchBob 是一套本地研究工作流，用来把 GitHub issue 里的研究需求转成周期性的 arXiv 论文发现与总结。
 
-你可以通过当前仓库的 GitHub issue 提交一个研究方向、主题或约束，系统会把这些需求纳入“每天论文总结”流程。
+### 动机
 
-它不是一个即时响应的论文分析服务。
+科研里真正困难的通常不是“能不能拿到论文”，而是：
 
-它更像一个部署在我笔记本上的、本地运行的、best-effort 的每日总结系统。
+- 论文太多
+- 方向容易发散
+- 用户需求常常分散在聊天、笔记或 issue 里
+- 很难稳定地把方向变成一组值得读的论文和总结
 
-这意味着：
+这个项目就是为了降低这部分摩擦。
 
-- 需求入口是 GitHub issue
-- 结果是批量生成的，不是即时返回
-- 时间不保证
+### 原理
 
-### 你怎么提需求
+整体流程是：
 
-请按这个最小格式发 issue：
+1. 用户通过 GitHub issue 提需求
+2. 本地流程把需求同步到工作区
+3. 系统用研究画像抓取、筛选并总结论文
+4. 系统写日报、论文集合和导出文件
+5. GitHub 侧的 push / issue comment / issue close 可以稍后在另一个网络环境里执行
+
+### 优势与局限
+
+**优势**
+
+- issue 驱动，输入清晰
+- 本地优先，产物可检查
+- 适合周期性论文发现和总结
+- 通过 `finalize-github` 支持网络环境拆分
+- 同时提供可复用的 Codex research skills
+
+**局限**
+
+- 不是即时响应的论文分析服务
+- 时间不保证，因为它运行在个人笔记本上
+- 当前还是单工作区，不是多租户系统
+- arXiv / 模型网关和 GitHub 可能需要不同代理环境
+
+---
+
+## 2. 主要功能
+
+| 功能 | 作用 | 适合谁 | 优势 | 局限 |
+|---|---|---|---|---|
+| 自动 idea 收集与发现 | 把需求转成周期性论文发现和日报 | 想持续跟踪方向的人 | 输入结构化、流程稳定、本地产物清晰 | 不是即时执行，依赖本地周期运行 |
+| 科研 Skill 工具集 | 提供可复用的 Codex skills | 想交互式做科研辅助的人 | 可复用、模块化、适合互动场景 | 与自动化周期流程是两条路径 |
+
+---
+
+## 3. 功能 1：自动 idea 收集与发现
+
+### 介绍是什么
+
+这个功能会把研究方向、主题和限制条件，转换成周期性的论文发现与日报流程。
+
+常见输出包括：
+
+- 每日 markdown 报告
+- 每日 summary
+- 选中文章的本地 artifacts
+- RIS 导出
+- GitHub finalize 需要的状态文件
+
+### 使用方式 1：自动 idea 收集与发现（本地部署）
+
+#### 介绍是什么
+
+这是运维/部署者视角。
+
+你本地运行工作流，让系统自动：
+
+- 同步 issue 需求
+- 构建或复用研究画像
+- 发现和总结论文
+- 在后续环境中做 GitHub 收尾
+
+#### 具体使用方式
+
+典型流程：
+
+```bash
+PYTHONPATH=src python -m auto_research.cli init-workspace --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace
+```
+
+几个关键命令：
+
+- `sync-issues`
+  把 GitHub issue 拉到 `research-workspace/issue-intake/`
+- `daily-pipeline`
+  生成论文分析和日报
+- `finalize-github`
+  执行 `git push`，然后对被消费的 issue 做 comment 和 close
+
+#### 利用 AI 部署
+
+如果你想让 AI 助手帮你部署本地流程，可以直接贴：
+
+```text
+请帮我把这个仓库部署成本地的每天论文总结流程。
+
+仓库路径：/path/to/ResearchBob
+工作区路径：/path/to/ResearchBob/research-workspace
+
+请完成这些事情：
+1. 如果需要，初始化 workspace。
+2. 告诉我还缺哪些环境变量或 `.env.local` 配置。
+3. 校验 `sync-issues`、`daily-pipeline`、`finalize-github` 这三个 CLI 命令的用法。
+4. 给我一套端到端运行命令。
+5. 说明如果 GitHub 和 arXiv 需要不同网络环境，我应该怎么拆开执行。
+```
+
+### 使用方式 2：使用 Issue
+
+#### 介绍是什么
+
+这是用户提交需求的方式。
+
+用户直接在本仓库提 GitHub issue，系统会在周期性运行时把这些需求纳入论文总结流程。
+
+#### 具体使用方式
+
+用户提交 issue。
+
+部署端后续执行：
+
+```bash
+PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace
+```
+
+#### 用户侧
+
+如果你只是提需求，这一部分才是你要关心的。
+
+在本仓库里，你可以直接提 issue。项目会周期性地产出：
+
+- 每日报告
+- 每日 summary
+- 选中文章的本地 artifacts
+- 导出文件
+
+关键输出目录：
+
+```text
+research-workspace/reports/daily/
+research-workspace/papers/
+research-workspace/exports/zotero/
+```
+
+Issue 格式：
 
 ```md
 ---
@@ -316,30 +489,34 @@ direction: llm-agents
 如果有开源实现，也可以顺手记一下。
 ```
 
-规则：
+细节：
 
-- 正文第一行就要开始 YAML frontmatter
+- 正文第一行就必须开始 YAML frontmatter
 - `direction` 必填
-- issue 标题可以自由写
-- `Background` / `Requirements` / `Constraints` / `Notes` 建议写，但不是每一项都强制
+- 标题随意
+- `Background` / `Requirements` / `Constraints` / `Notes` 推荐写
+- 这是周期性流程，不是即时响应
+- 时间是 best-effort，因为系统跑在本地笔记本上
 
-### 你可以期待什么
+#### 开发者侧
 
-当你的 issue 被处理后：
+如果你不部署这个项目，不需要关注这部分。
 
-- 它可能被纳入下一次每天论文总结
-- 系统可能会先在 issue 下留言，说明这次需求已经被消费
-- 然后 issue 可能被自动关闭
+部署端需要负责：
 
-### 重要限制
+- 把 issue 同步到 `research-workspace/issue-intake/`
+- 运行每天论文总结流程
+- 必要时在另一个网络环境里执行 GitHub finalize
 
-- 这套流程只服务于每天论文总结
-- 不承诺即时执行
-- 因为它跑在个人笔记本上，所以排队时间和完成时间都是 best-effort
+关键细节：
 
-### 用 Prompt 帮你整理 Issue
+- 如果 `profile/interest-profile.md` 缺失，`daily-pipeline` 可能自动生成它
+- `finalize-github` 读取 `research-workspace/pipeline/github-finalize.json`
+- `finalize-github` 的存在，就是为了把 GitHub 操作从论文总结本身解耦
 
-如果你想让 AI 助手把零散想法整理成可提交的 issue，可以直接贴这段：
+#### 利用 AI 凝练 Issue
+
+如果你想让 AI 助手把零散需求整理成合法 issue，可以直接贴：
 
 ```text
 请帮我把下面这段需求整理成适合这个仓库使用的 GitHub issue。
@@ -360,158 +537,55 @@ direction: llm-agents
 
 ---
 
-## To the Developer
+## 4. 功能 2：科研相关的 Skill 工具集
 
-这一段面向维护和运行本地流程的人。
+### 介绍是什么
 
-### 标准工作流
+这个仓库还附带了一组可复用的 Codex skills，用来支持研究相关的交互式工作，而不是周期性自动化流程。
 
-推荐按这三步执行：
+你可以用它们来做：
 
-```bash
-PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace
-PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace
-PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace
-```
+- 研究画像编辑
+- 论文 intake 与整理
+- reviewer 视角模拟
+- 问题/方案提取
+- 报告生成
 
-三步职责分别是：
+### Skill 表
 
-- `sync-issues`
-  从 GitHub 拉 issue，写入 `research-workspace/issue-intake/`
-- `daily-pipeline`
-  生成论文分析、日报和导出文件
-- `finalize-github`
-  执行 `git push`，然后对被消费的 issue 做 comment 和 close
+| Skill | 作用 | 适用场景 |
+|---|---|---|
+| `research-interest-profile` | 编辑或修订研究兴趣画像 | 维护输入 profile |
+| `paper-intake-and-normalize` | 拉取并整理论文候选 | 交互式 intake |
+| `paper-review-simulator` | 模拟 reviewer 式质疑 | 投稿前自查 |
+| `problem-solution-extractor` | 提取论文的问题/方案结构 | 结构化阅读 |
+| `report-composer` | 辅助生成报告 | 交互式报告产出 |
 
-### 为什么要拆出 `finalize-github`
+### 使用方式
 
-现实环境里常见的问题是：
+你可以把这些 skill 安装到 Codex 的 skills 目录里，然后交互式使用。
 
-- 能访问 arXiv / 模型网关的网络环境，不一定能访问 GitHub
-- 能访问 GitHub 的网络环境，不一定适合跑整套论文抓取和模型调用
-
-所以现在设计成两段式：
-
-- `daily-pipeline` 负责内容生成
-- `finalize-github` 负责 GitHub 侧收尾
-
-### 工作区结构
-
-关键目录：
+示例 prompt：
 
 ```text
-research-workspace/
-├── profile/
-│   └── interest-profile.md
-├── issue-intake/
-│   └── <direction>/<github-username>/
-│       ├── profile.json
-│       ├── summary.md
-│       └── requests/<issue-number>.md
-├── papers/
-├── reports/
-│   ├── daily/
-│   └── longterm/
-├── exports/
-│   └── zotero/
-└── pipeline/
-    ├── run-history.jsonl
-    └── github-finalize.json
+Use $research-interest-profile to revise my research profile.
+Use $paper-intake-and-normalize to fetch today's arXiv papers.
+Use $paper-review-simulator to critique my paper draft before submission.
+Use $problem-solution-extractor to analyze this paper.
+Use $report-composer to generate today's report.
 ```
 
-### Profile 缺失时的行为
+Skill 目录：
 
-如果 `research-workspace/profile/interest-profile.md` 不存在：
+- [research-interest-profile](skills/research-interest-profile/SKILL.md)
+- [paper-intake-and-normalize](skills/paper-intake-and-normalize/SKILL.md)
+- [paper-review-simulator](skills/paper-review-simulator/SKILL.md)
+- [problem-solution-extractor](skills/problem-solution-extractor/SKILL.md)
+- [report-composer](skills/report-composer/SKILL.md)
 
-- `daily-pipeline` 会尝试从 `research-workspace/issue-intake/` 自动生成它
-- 只有生成结果通过校验，流程才会继续
+### 利用 AI 部署
 
-如果 profile 已经存在：
-
-- 直接使用现有文件
-- 不覆盖
-
-### GitHub Finalize 的行为
-
-`finalize-github` 读取：
-
-```text
-research-workspace/pipeline/github-finalize.json
-```
-
-规则：
-
-- 文件不存在：说明没有待 finalize 的 GitHub 操作
-- 文件是 `pending`：执行 `git push`，再 comment / close issue
-- 文件是 `completed`：不重复执行
-
-### 网络与代理
-
-常见情况是：
-
-- `sync-issues` 和 `finalize-github` 需要 GitHub 连通性
-- `daily-pipeline` 需要 arXiv 和模型网关连通性
-
-如果代理设置会让两边互相冲突，就在不同网络环境里分开执行。
-
-例如去掉代理变量跑 `daily-pipeline`：
-
-```bash
-env -u all_proxy -u ALL_PROXY -u http_proxy -u HTTP_PROXY -u https_proxy -u HTTPS_PROXY \
-PYTHONPATH=src \
-python -m auto_research.cli daily-pipeline --workspace research-workspace
-```
-
-### 初始化
-
-初始化工作区：
-
-```bash
-PYTHONPATH=src python -m auto_research.cli init-workspace --workspace research-workspace
-```
-
-在仓库根目录创建 `.env.local`：
-
-```bash
-OPENAI_API_KEY=your-key
-OPENAI_BASE_URL=http://your-gateway
-AUTO_RESEARCH_MODEL=gpt-5.4
-```
-
-### 可用 CLI
-
-可用命令：
-
-- `init-workspace`
-- `validate-profile`
-- `intake`
-- `validate-extraction`
-- `compose-report`
-- `daily-pipeline`
-- `sync-issues`
-- `finalize-github`
-
-### 用 Prompt 帮你部署本地流程
-
-如果你想让 AI 助手帮你搭建本地流程，可以直接贴这段：
-
-```text
-请帮我把这个仓库部署成本地的每天论文总结流程。
-
-仓库路径：/path/to/ResearchBob
-工作区路径：/path/to/ResearchBob/research-workspace
-
-请完成这些事情：
-1. 如果需要，初始化 workspace。
-2. 告诉我还缺哪些环境变量或 `.env.local` 配置。
-3. 校验 `sync-issues`、`daily-pipeline`、`finalize-github` 这三个 CLI 命令的用法。
-4. 给我一套端到端运行命令。
-5. 说明如果 GitHub 和 arXiv 需要不同网络环境，我应该怎么拆开执行。
-```
-
-### 用 Prompt 帮你安装 Codex Skill
-
-如果你想让 AI 助手安装可复用的 Codex skills，可以直接贴这段：
+如果你想让 AI 助手帮你安装这些 Codex skills，可以直接贴：
 
 ```text
 请帮我把这个仓库里的 Codex skills 安装到本机的 Codex skills 目录。
@@ -528,13 +602,3 @@ AUTO_RESEARCH_MODEL=gpt-5.4
 
 安装完成后，请校验这些链接是否存在，并把实际创建的路径列给我。
 ```
-
-### 仓库内置的 Codex Skills
-
-这个仓库也包含几组可复用的 Codex skills：
-
-- [research-interest-profile](skills/research-interest-profile/SKILL.md)
-- [paper-intake-and-normalize](skills/paper-intake-and-normalize/SKILL.md)
-- [paper-review-simulator](skills/paper-review-simulator/SKILL.md)
-- [problem-solution-extractor](skills/problem-solution-extractor/SKILL.md)
-- [report-composer](skills/report-composer/SKILL.md)
