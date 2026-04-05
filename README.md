@@ -178,17 +178,18 @@ direction: llm-agents
 ---
 
 ## Background
-我最近想重点关注多智能体协作、规划和 tool use 相关论文。
+I want to focus on papers about multi-agent collaboration, planning, and tool use.
 
 ## Requirements
-- 优先看有明确系统设计的工作
-- 希望每天总结里突出 problem、method、limitations
+- Prefer papers with clear system design
+- In the daily summary, highlight the problem, method, and limitations
 
 ## Constraints
-- 尽量避免纯 benchmark 堆分数的论文
+- Avoid papers that are mostly benchmark chasing
+- Prefer recent work when possible
 
 ## Notes
-如果有开源实现，也可以顺手记一下。
+If there is an open-source implementation, it is helpful to mention it.
 ```
 
 Details:
