@@ -2,16 +2,106 @@
   "label": "2026-04-04",
   "selected_papers": [
     {
-      "paper_id": "1908.03898v1",
-      "title": "Digitally Mutating NV-FPGAs into Physically Clone-Resistant Units",
-      "paper_dir": "research-workspace/papers/1908.03898",
-      "pdf_path": "research-workspace/papers/1908.03898/source.pdf",
-      "summary_path": "research-workspace/papers/1908.03898/problem-solution.md",
-      "analysis_path": "research-workspace/papers/1908.03898/detailed-analysis.md",
-      "state_path": "research-workspace/papers/1908.03898/state.json"
+      "paper_id": "2604.01658v1",
+      "title": "CORAL: Towards Autonomous Multi-Agent Evolution for Open-Ended Discovery",
+      "paper_dir": "research-workspace/papers/2604.01658",
+      "pdf_path": "research-workspace/papers/2604.01658/source.pdf",
+      "summary_path": "research-workspace/papers/2604.01658/problem-solution.md",
+      "analysis_path": "research-workspace/papers/2604.01658/detailed-analysis.md",
+      "state_path": "research-workspace/papers/2604.01658/state.json"
+    },
+    {
+      "paper_id": "2604.01350v1",
+      "title": "No Attacker Needed: Unintentional Cross-User Contamination in Shared-State LLM Agents",
+      "paper_dir": "research-workspace/papers/2604.01350",
+      "pdf_path": "research-workspace/papers/2604.01350/source.pdf",
+      "summary_path": "research-workspace/papers/2604.01350/problem-solution.md",
+      "analysis_path": "research-workspace/papers/2604.01350/detailed-analysis.md",
+      "state_path": "research-workspace/papers/2604.01350/state.json"
+    },
+    {
+      "paper_id": "2604.00392v1",
+      "title": "EvolveTool-Bench: Evaluating the Quality of LLM-Generated Tool Libraries as Software Artifacts",
+      "paper_dir": "research-workspace/papers/2604.00392",
+      "pdf_path": "research-workspace/papers/2604.00392/source.pdf",
+      "summary_path": "research-workspace/papers/2604.00392/problem-solution.md",
+      "analysis_path": "research-workspace/papers/2604.00392/detailed-analysis.md",
+      "state_path": "research-workspace/papers/2604.00392/state.json"
+    },
+    {
+      "paper_id": "2604.01212v1",
+      "title": "$\\texttt{YC-Bench}$: Benchmarking AI Agents for Long-Term Planning and Consistent Execution",
+      "paper_dir": "research-workspace/papers/2604.01212",
+      "pdf_path": "research-workspace/papers/2604.01212/source.pdf",
+      "summary_path": "research-workspace/papers/2604.01212/problem-solution.md",
+      "analysis_path": "research-workspace/papers/2604.01212/detailed-analysis.md",
+      "state_path": "research-workspace/papers/2604.01212/state.json"
+    },
+    {
+      "paper_id": "2604.00892v1",
+      "title": "When Users Change Their Mind: Evaluating Interruptible Agents in Long-Horizon Web Navigation",
+      "paper_dir": "research-workspace/papers/2604.00892",
+      "pdf_path": "research-workspace/papers/2604.00892/source.pdf",
+      "summary_path": "research-workspace/papers/2604.00892/problem-solution.md",
+      "analysis_path": "research-workspace/papers/2604.00892/detailed-analysis.md",
+      "state_path": "research-workspace/papers/2604.00892/state.json"
+    },
+    {
+      "paper_id": "2604.00304v1",
+      "title": "Asymmetric Actor-Critic for Multi-turn LLM Agents",
+      "paper_dir": "research-workspace/papers/2604.00304",
+      "pdf_path": "research-workspace/papers/2604.00304/source.pdf",
+      "summary_path": "research-workspace/papers/2604.00304/problem-solution.md",
+      "analysis_path": "research-workspace/papers/2604.00304/detailed-analysis.md",
+      "state_path": "research-workspace/papers/2604.00304/state.json"
+    },
+    {
+      "paper_id": "2604.01532v1",
+      "title": "PHMForge: A Scenario-Driven Agentic Benchmark for Industrial Asset Lifecycle Maintenance",
+      "paper_dir": "research-workspace/papers/2604.01532",
+      "pdf_path": "research-workspace/papers/2604.01532/source.pdf",
+      "summary_path": "research-workspace/papers/2604.01532/problem-solution.md",
+      "analysis_path": "research-workspace/papers/2604.01532/detailed-analysis.md",
+      "state_path": "research-workspace/papers/2604.01532/state.json"
+    },
+    {
+      "paper_id": "2604.02268v1",
+      "title": "SKILL0: In-Context Agentic Reinforcement Learning for Skill Internalization",
+      "paper_dir": "research-workspace/papers/2604.02268",
+      "pdf_path": "research-workspace/papers/2604.02268/source.pdf",
+      "summary_path": "research-workspace/papers/2604.02268/problem-solution.md",
+      "analysis_path": "research-workspace/papers/2604.02268/detailed-analysis.md",
+      "state_path": "research-workspace/papers/2604.02268/state.json"
+    },
+    {
+      "paper_id": "2604.01151v1",
+      "title": "Detecting Multi-Agent Collusion Through Multi-Agent Interpretability",
+      "paper_dir": "research-workspace/papers/2604.01151",
+      "pdf_path": "research-workspace/papers/2604.01151/source.pdf",
+      "summary_path": "research-workspace/papers/2604.01151/problem-solution.md",
+      "analysis_path": "research-workspace/papers/2604.01151/detailed-analysis.md",
+      "state_path": "research-workspace/papers/2604.01151/state.json"
+    },
+    {
+      "paper_id": "2604.00722v1",
+      "title": "LangMARL: Natural Language Multi-Agent Reinforcement Learning",
+      "paper_dir": "research-workspace/papers/2604.00722",
+      "pdf_path": "research-workspace/papers/2604.00722/source.pdf",
+      "summary_path": "research-workspace/papers/2604.00722/problem-solution.md",
+      "analysis_path": "research-workspace/papers/2604.00722/detailed-analysis.md",
+      "state_path": "research-workspace/papers/2604.00722/state.json"
     }
   ],
   "failed_or_retry": [
-    "Digitally Mutating NV-FPGAs into Physically Clone-Resistant Units: pdf_failed - [Errno 8] nodename nor servname provided, or not known"
+    "CORAL: Towards Autonomous Multi-Agent Evolution for Open-Ended Discovery: pdf_failed - [Errno 8] nodename nor servname provided, or not known",
+    "No Attacker Needed: Unintentional Cross-User Contamination in Shared-State LLM Agents: pdf_failed - [Errno 8] nodename nor servname provided, or not known",
+    "EvolveTool-Bench: Evaluating the Quality of LLM-Generated Tool Libraries as Software Artifacts: pdf_failed - [Errno 8] nodename nor servname provided, or not known",
+    "$\\texttt{YC-Bench}$: Benchmarking AI Agents for Long-Term Planning and Consistent Execution: pdf_failed - [Errno 8] nodename nor servname provided, or not known",
+    "When Users Change Their Mind: Evaluating Interruptible Agents in Long-Horizon Web Navigation: pdf_failed - [Errno 8] nodename nor servname provided, or not known",
+    "Asymmetric Actor-Critic for Multi-turn LLM Agents: pdf_failed - [Errno 8] nodename nor servname provided, or not known",
+    "PHMForge: A Scenario-Driven Agentic Benchmark for Industrial Asset Lifecycle Maintenance: pdf_failed - [Errno 8] nodename nor servname provided, or not known",
+    "SKILL0: In-Context Agentic Reinforcement Learning for Skill Internalization: pdf_failed - [Errno 8] nodename nor servname provided, or not known",
+    "Detecting Multi-Agent Collusion Through Multi-Agent Interpretability: pdf_failed - [Errno 8] nodename nor servname provided, or not known",
+    "LangMARL: Natural Language Multi-Agent Reinforcement Learning: pdf_failed - [Errno 8] nodename nor servname provided, or not known"
   ]
 }
