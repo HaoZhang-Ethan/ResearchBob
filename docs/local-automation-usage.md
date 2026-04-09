@@ -28,6 +28,8 @@ Or use the wrapper:
 PYTHONPATH=src python scripts/daily_pipeline.py
 ```
 
+Note: `scripts/daily_pipeline.py` is a convenience wrapper, not the general entrypoint for direction-scoped runs. If you want direction-local artifacts under `research-workspace/directions/<direction>/`, prefer the CLI form with `--direction <direction>`.
+
 When you pass `--direction <direction>`, generated artifacts are written under:
 
 ```text

@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 from subprocess import run
 
 from auto_research.cli import main as cli_main
@@ -126,3 +127,60 @@ def test_finalize_github_cli_passes_direction(monkeypatch, capsys, tmp_path) -> 
 
     assert exit_code == 0
     assert captured["direction"] == "llm-agents"
+
+
+def test_compose_report_cli_passes_direction_workspace(monkeypatch, capsys, tmp_path) -> None:
+    captured = {}
+
+    def fake_compose_report(*, workspace: Path, mode: str, label: str):
+        captured["workspace"] = workspace
+        captured["mode"] = mode
+        captured["label"] = label
+        return tmp_path / "report.md"
+
+    monkeypatch.setattr("auto_research.cli.compose_report", fake_compose_report)
+
+    workspace_root = tmp_path / "research-workspace"
+    exit_code = cli_main(
+        [
+            "compose-report",
+            "--workspace",
+            str(workspace_root),
+            "--direction",
+            "llm-agents",
+            "--label",
+            "2026-04-09",
+        ]
+    )
+    captured_io = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured["workspace"] == workspace_root / "directions" / "llm-agents"
+    assert "report.md" in captured_io.out
+
+
+def test_compose_report_cli_rejects_traversal_direction(monkeypatch, capsys, tmp_path) -> None:
+    captured = {"called": False}
+
+    def fake_compose_report(*, workspace: Path, mode: str, label: str):
+        captured["called"] = True
+        return tmp_path / "report.md"
+
+    monkeypatch.setattr("auto_research.cli.compose_report", fake_compose_report)
+
+    exit_code = cli_main(
+        [
+            "compose-report",
+            "--workspace",
+            str(tmp_path / "research-workspace"),
+            "--direction",
+            "../escaped",
+            "--label",
+            "2026-04-09",
+        ]
+    )
+    captured_io = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured["called"] is False
+    assert "Invalid --direction" in captured_io.err

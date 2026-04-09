@@ -28,6 +28,16 @@ def _profile_path_was_overridden(argv: Sequence[str]) -> bool:
     return any(argument == "--profile" or argument.startswith("--profile=") for argument in argv)
 
 
+def _validate_direction_argument(direction: str) -> None:
+    direction_path = Path(direction)
+    if not direction.strip():
+        raise ValueError("Invalid --direction: must be non-empty")
+    if direction_path.is_absolute():
+        raise ValueError(f"Invalid --direction: must be a relative name: {direction}")
+    if len(direction_path.parts) != 1 or direction_path.parts[0] in (".", ".."):
+        raise ValueError(f"Invalid --direction: must be a simple name (no traversal): {direction}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="auto-research")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -202,6 +212,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             workspace = Path(args.workspace)
             if args.direction:
+                _validate_direction_argument(args.direction)
                 workspace = workspace / "directions" / args.direction
             report_path = compose_report(
                 workspace=workspace,
