@@ -352,3 +352,16 @@ def test_build_fallback_profile_from_issue_intake_rejects_blank_direction(tmp_pa
     with pytest.raises(ValueError, match="direction"):
         build_fallback_profile_from_issue_intake(workspace, direction="")
 
+
+def test_build_fallback_profile_from_issue_intake_rejects_traversal_direction(tmp_path) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    with pytest.raises(ValueError, match="direction"):
+        build_fallback_profile_from_issue_intake(workspace, direction="../escaped")
+
+
+def test_build_fallback_profile_from_issue_intake_rejects_absolute_direction(tmp_path) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    with pytest.raises(ValueError, match="direction"):
+        build_fallback_profile_from_issue_intake(workspace, direction="/etc/passwd")

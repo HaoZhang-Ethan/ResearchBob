@@ -96,6 +96,18 @@ def _slugify(value: str) -> str:
     return normalized
 
 
+def _validate_direction_segment(direction: str) -> str:
+    candidate = direction.strip()
+    if not candidate:
+        raise ValueError("direction must be a non-empty string")
+    segment_path = Path(candidate)
+    if segment_path.is_absolute() or len(segment_path.parts) != 1:
+        raise ValueError("direction must be a single safe segment")
+    if segment_path.name in {"", ".", ".."} or candidate != segment_path.name:
+        raise ValueError("direction must be a single safe segment")
+    return candidate
+
+
 def parse_github_repo(remote_url: str) -> str:
     text = remote_url.strip()
     match = _HTTPS_REMOTE_RE.match(text) or _SSH_REMOTE_RE.match(text)
@@ -300,9 +312,8 @@ def build_fallback_profile_from_issue_intake(
     direction: str,
     repo: str | None = None,
 ) -> FallbackProfileResult:
-    if not direction or not direction.strip():
-        raise ValueError("direction must be a non-empty string")
-    sources = _collect_issue_intake_sources(workspace, direction)
+    safe_direction = _validate_direction_segment(direction)
+    sources = _collect_issue_intake_sources(workspace, safe_direction)
     if not sources:
         raise ValueError(f"No usable issue intake data available for direction: {direction}")
 
@@ -359,7 +370,7 @@ def build_fallback_profile_from_issue_intake(
         repo=repo,
         issue_numbers=sorted(set(issue_numbers)),
         source_keys=source_keys,
-        direction=direction or "all",
+        direction=safe_direction,
     )
 
 
