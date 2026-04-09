@@ -291,20 +291,18 @@ def _collect_issue_numbers_for_source(user_dir: Path) -> list[int]:
     return issue_numbers
 
 
-def render_profile_from_issue_intake(workspace: Path) -> str:
-    return build_fallback_profile_from_issue_intake(workspace).markdown
+def render_profile_from_issue_intake(workspace: Path, direction: str) -> str:
+    return build_fallback_profile_from_issue_intake(workspace, direction=direction).markdown
 
 
 def build_fallback_profile_from_issue_intake(
     workspace: Path,
-    direction: str | None = None,
+    direction: str,
     repo: str | None = None,
 ) -> FallbackProfileResult:
     sources = _collect_issue_intake_sources(workspace, direction)
     if not sources:
-        if direction:
-            raise ValueError(f"No usable issue intake data available for direction: {direction}")
-        raise ValueError("No usable issue intake data available to generate an interest profile")
+        raise ValueError(f"No usable issue intake data available for direction: {direction}")
 
     source_lines = [f"> - {direction_name} / {username}" for direction_name, username, _ in sources]
     source_keys = [f"{direction_name}/{username}" for direction_name, username, _ in sources]

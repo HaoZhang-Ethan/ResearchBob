@@ -180,7 +180,7 @@ def test_render_profile_from_issue_intake_summaries(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    markdown = render_profile_from_issue_intake(workspace)
+    markdown = render_profile_from_issue_intake(workspace, direction="llm-agents")
 
     assert "llm-agents / alice" in markdown
     assert "## Core Interests" in markdown
@@ -192,7 +192,7 @@ def test_render_profile_from_issue_intake_rejects_empty_workspace(tmp_path) -> N
     ensure_workspace(workspace)
 
     with pytest.raises(ValueError, match="issue intake"):
-        render_profile_from_issue_intake(workspace)
+        render_profile_from_issue_intake(workspace, direction="llm-agents")
 
 
 def test_build_fallback_profile_collects_issue_numbers(tmp_path) -> None:
@@ -227,7 +227,11 @@ url: "https://github.com/example/research/issues/12"
         encoding="utf-8",
     )
 
-    result = build_fallback_profile_from_issue_intake(workspace, repo="example/research")
+    result = build_fallback_profile_from_issue_intake(
+        workspace,
+        direction="llm-agents",
+        repo="example/research",
+    )
 
     assert isinstance(result, FallbackProfileResult)
     assert result.repo == "example/research"
