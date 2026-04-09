@@ -63,6 +63,19 @@ def test_ensure_direction_workspace_rejects_symlinked_direction_root(tmp_path) -
         ensure_direction_workspace(workspace_root, "llm-agents")
 
 
+def test_ensure_direction_workspace_rejects_dangling_symlinked_direction_root(tmp_path) -> None:
+    workspace_root = tmp_path / "research-workspace"
+    ensure_workspace(workspace_root)
+    target = tmp_path / "dangling-direction"
+    target.mkdir(parents=True, exist_ok=True)
+    symlink_root = workspace_root / "directions" / "llm-agents"
+    os.symlink(target, symlink_root)
+    target.rmdir()
+
+    with pytest.raises(OSError, match="symlink"):
+        ensure_direction_workspace(workspace_root, "llm-agents")
+
+
 def test_ensure_workspace_rejects_symlinked_root(tmp_path) -> None:
     outside = tmp_path / "outside"
     outside.mkdir(parents=True, exist_ok=True)

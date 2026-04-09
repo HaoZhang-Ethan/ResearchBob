@@ -61,7 +61,7 @@ def ensure_direction_workspace(root: Path, direction: str) -> Path:
     workspace = ensure_workspace(root)
     direction_root = workspace / "directions" / direction
 
-    if direction_root.exists() and direction_root.is_symlink():
+    if direction_root.is_symlink():
         raise OSError(f"Refusing to use symlinked workspace directory: {direction_root}")
 
     for relative_path in DIRECTION_WORKSPACE_DIRECTORIES:
