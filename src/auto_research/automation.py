@@ -487,6 +487,18 @@ def _resolve_run_direction(
     raise ValueError("No usable issue directions found; pass --direction")
 
 
+def _validate_direction_segment(direction: str) -> None:
+    if not direction:
+        raise ValueError("Invalid direction: empty value")
+
+    path = Path(direction)
+    if path.is_absolute():
+        raise ValueError("Invalid direction: absolute paths are not allowed")
+
+    if len(path.parts) != 1 or path.parts[0] in {".", ".."}:
+        raise ValueError("Invalid direction: must be a single segment")
+
+
 def _github_finalize_state_path(execution_workspace: Path) -> Path:
     return execution_workspace / "pipeline" / "github-finalize.json"
 
@@ -532,6 +544,7 @@ def _write_github_finalize_state(
 def finalize_github(workspace: Path, direction: str | None = None) -> dict[str, object]:
     shared_workspace = ensure_workspace(workspace)
     resolved_direction = _resolve_run_direction(shared_workspace, direction, None)
+    _validate_direction_segment(resolved_direction)
     # Avoid creating a new direction workspace when the finalize state doesn't exist.
     execution_workspace = shared_workspace / "directions" / resolved_direction
     state_path = _github_finalize_state_path(execution_workspace)

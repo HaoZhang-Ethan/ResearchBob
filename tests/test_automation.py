@@ -1086,6 +1086,54 @@ def test_finalize_github_missing_state_does_not_create_direction_tree(tmp_path) 
     assert not missing_dir.exists()
 
 
+def test_finalize_github_rejects_traversal_direction(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    # If finalize_github naively accepts traversal-like directions, it could look up state outside
+    # the intended `directions/<dir>/...` tree. Create a tempting state file at that escaped path.
+    escape_dir = workspace / "escape"
+    escape_dir.mkdir(parents=True, exist_ok=True)
+    state_path = escape_dir / "pipeline" / "github-finalize.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        """{
+  "direction": "escape",
+  "label": "2026-04-09",
+  "repo": "example/research",
+  "report_path": "/tmp/report.md",
+  "daily_summary_path": "/tmp/summary.md",
+  "used_fallback_profile": true,
+  "consumed_issue_numbers": [12],
+  "source_keys": ["llm-agents/alice"],
+  "status": "pending",
+  "created_at": "2026-04-09T00:00:00Z",
+  "finalized_at": ""
+}
+""",
+        encoding="utf-8",
+    )
+
+    calls: list[tuple[str, object]] = []
+    monkeypatch.setattr(
+        "auto_research.automation.subprocess.run",
+        lambda cmd, cwd, check, **kwargs: calls.append(("push", cmd)) or None,
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.comment_on_issue",
+        lambda *, repo, issue_number, body: calls.append(("comment", repo, issue_number)),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.close_issue",
+        lambda *, repo, issue_number: calls.append(("close", repo, issue_number)),
+    )
+
+    with pytest.raises(ValueError, match="Invalid direction"):
+        finalize_github(workspace, direction="../escape")
+
+    assert calls == []
+
+
 def test_finalize_github_skips_completed_state(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
     ensure_direction_workspace(workspace, "llm-agents")
