@@ -108,6 +108,19 @@ def _validate_direction_segment(direction: str) -> str:
     return candidate
 
 
+def canonicalize_direction_slug(direction: str) -> str:
+    """Validate a user-provided direction label and return its canonical slug.
+
+    This is intended for any user-facing / runtime direction input. It rejects
+    traversal/absolute/multi-segment values rather than silently normalizing them.
+    """
+    candidate = _validate_direction_segment(direction)
+    try:
+        return _slugify(candidate)
+    except IssueParseError as exc:
+        raise ValueError(str(exc)) from exc
+
+
 def parse_github_repo(remote_url: str) -> str:
     text = remote_url.strip()
     match = _HTTPS_REMOTE_RE.match(text) or _SSH_REMOTE_RE.match(text)
@@ -312,7 +325,7 @@ def build_fallback_profile_from_issue_intake(
     direction: str,
     repo: str | None = None,
 ) -> FallbackProfileResult:
-    safe_direction = _validate_direction_segment(direction)
+    safe_direction = canonicalize_direction_slug(direction)
     sources = _collect_issue_intake_sources(workspace, safe_direction)
     if not sources:
         raise ValueError(f"No usable issue intake data available for direction: {direction}")

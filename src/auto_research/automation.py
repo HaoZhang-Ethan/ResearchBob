@@ -12,6 +12,7 @@ from auto_research.analysis import build_detailed_analysis, render_detailed_anal
 from auto_research.extraction import validate_extraction_document
 from auto_research.github_intake import (
     build_fallback_profile_from_issue_intake,
+    canonicalize_direction_slug,
     close_issue,
     comment_on_issue,
     discover_issue_directions,
@@ -466,7 +467,8 @@ def _resolve_run_direction(
     profile_path: Path | None,
 ) -> str:
     if requested_direction:
-        return requested_direction
+        _validate_direction_segment(requested_direction)
+        return canonicalize_direction_slug(requested_direction)
 
     inferred = _infer_direction_from_profile_path(workspace, profile_path)
     if inferred:

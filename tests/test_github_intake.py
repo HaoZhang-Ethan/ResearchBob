@@ -239,6 +239,33 @@ url: "https://github.com/example/research/issues/12"
     assert result.source_keys == ["llm-agents/alice"]
 
 
+def test_build_fallback_profile_from_issue_intake_canonicalizes_direction_label(tmp_path) -> None:
+    workspace = tmp_path / "research-workspace"
+    request_dir = workspace / "issue-intake" / "llm-agents" / "alice" / "requests"
+    request_dir.mkdir(parents=True, exist_ok=True)
+    (request_dir.parent / "summary.md").write_text(
+        """# Issue Intake Summary: llm-agents / alice
+
+- Direction: `llm-agents`
+- GitHub Username: `alice`
+- Request Count: 1
+
+## Active Issues
+- #12: Track multi-agent papers (OPEN)
+""",
+        encoding="utf-8",
+    )
+
+    result = build_fallback_profile_from_issue_intake(
+        workspace,
+        direction="LLM Agents",
+        repo="example/research",
+    )
+
+    assert result.direction == "llm-agents"
+    assert result.source_keys == ["llm-agents/alice"]
+
+
 def test_build_fallback_profile_from_issue_intake_uses_only_requested_direction(tmp_path) -> None:
     workspace = tmp_path / "research-workspace"
     llm_dir = workspace / "issue-intake" / "llm-agents" / "alice" / "requests"

@@ -112,6 +112,23 @@ def test_daily_pipeline_cli_passes_direction(monkeypatch, capsys, tmp_path) -> N
     assert captured["direction"] == "llm-agents"
 
 
+def test_daily_pipeline_cli_canonicalizes_direction_label(monkeypatch, capsys, tmp_path) -> None:
+    captured = {}
+
+    def fake_run_daily_pipeline(config):
+        captured["direction"] = config.direction
+        return type("Result", (), {"report_path": tmp_path / "report.md", "ris_path": tmp_path / "out.ris"})()
+
+    monkeypatch.setattr("auto_research.cli.run_daily_pipeline", fake_run_daily_pipeline)
+
+    exit_code = cli_main(
+        ["daily-pipeline", "--workspace", str(tmp_path / "research-workspace"), "--direction", "LLM Agents"]
+    )
+
+    assert exit_code == 0
+    assert captured["direction"] == "llm-agents"
+
+
 def test_finalize_github_cli_passes_direction(monkeypatch, capsys, tmp_path) -> None:
     captured = {}
 
@@ -123,6 +140,23 @@ def test_finalize_github_cli_passes_direction(monkeypatch, capsys, tmp_path) -> 
 
     exit_code = cli_main(
         ["finalize-github", "--workspace", str(tmp_path / "research-workspace"), "--direction", "llm-agents"]
+    )
+
+    assert exit_code == 0
+    assert captured["direction"] == "llm-agents"
+
+
+def test_finalize_github_cli_canonicalizes_direction_label(monkeypatch, capsys, tmp_path) -> None:
+    captured = {}
+
+    def fake_finalize_github(workspace, direction=None):
+        captured["direction"] = direction
+        return {"status": "completed", "label": "2026-04-09", "consumed_issue_numbers": [12]}
+
+    monkeypatch.setattr("auto_research.cli.finalize_github", fake_finalize_github)
+
+    exit_code = cli_main(
+        ["finalize-github", "--workspace", str(tmp_path / "research-workspace"), "--direction", "LLM Agents"]
     )
 
     assert exit_code == 0
@@ -159,6 +193,36 @@ def test_compose_report_cli_passes_direction_workspace(monkeypatch, capsys, tmp_
     assert "report.md" in captured_io.out
 
 
+def test_compose_report_cli_canonicalizes_direction_label(monkeypatch, capsys, tmp_path) -> None:
+    captured = {}
+
+    def fake_compose_report(*, workspace: Path, mode: str, label: str):
+        captured["workspace"] = workspace
+        captured["mode"] = mode
+        captured["label"] = label
+        return tmp_path / "report.md"
+
+    monkeypatch.setattr("auto_research.cli.compose_report", fake_compose_report)
+
+    workspace_root = tmp_path / "research-workspace"
+    exit_code = cli_main(
+        [
+            "compose-report",
+            "--workspace",
+            str(workspace_root),
+            "--direction",
+            "LLM Agents",
+            "--label",
+            "2026-04-09",
+        ]
+    )
+    captured_io = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured["workspace"] == workspace_root / "directions" / "llm-agents"
+    assert "report.md" in captured_io.out
+
+
 def test_compose_report_cli_rejects_traversal_direction(monkeypatch, capsys, tmp_path) -> None:
     captured = {"called": False}
 
@@ -175,6 +239,33 @@ def test_compose_report_cli_rejects_traversal_direction(monkeypatch, capsys, tmp
             str(tmp_path / "research-workspace"),
             "--direction",
             "../escaped",
+            "--label",
+            "2026-04-09",
+        ]
+    )
+    captured_io = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured["called"] is False
+    assert "Invalid --direction" in captured_io.err
+
+
+def test_compose_report_cli_rejects_absolute_direction(monkeypatch, capsys, tmp_path) -> None:
+    captured = {"called": False}
+
+    def fake_compose_report(*, workspace: Path, mode: str, label: str):
+        captured["called"] = True
+        return tmp_path / "report.md"
+
+    monkeypatch.setattr("auto_research.cli.compose_report", fake_compose_report)
+
+    exit_code = cli_main(
+        [
+            "compose-report",
+            "--workspace",
+            str(tmp_path / "research-workspace"),
+            "--direction",
+            "/etc/passwd",
             "--label",
             "2026-04-09",
         ]

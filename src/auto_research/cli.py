@@ -11,7 +11,7 @@ import httpx
 
 from auto_research.env import load_env_file
 from auto_research.extraction import validate_extraction_document
-from auto_research.github_intake import IssueSyncConfig, sync_issues
+from auto_research.github_intake import IssueSyncConfig, canonicalize_direction_slug, sync_issues
 from auto_research.intake import IntakeDataError, IntakeProfileError, run_intake
 from auto_research.profile import validate_interest_profile_text
 from auto_research.registry import RegistryCorruptionError
@@ -29,13 +29,14 @@ def _profile_path_was_overridden(argv: Sequence[str]) -> bool:
 
 
 def _validate_direction_argument(direction: str) -> None:
-    direction_path = Path(direction)
-    if not direction.strip():
-        raise ValueError("Invalid --direction: must be non-empty")
-    if direction_path.is_absolute():
-        raise ValueError(f"Invalid --direction: must be a relative name: {direction}")
-    if len(direction_path.parts) != 1 or direction_path.parts[0] in (".", ".."):
-        raise ValueError(f"Invalid --direction: must be a simple name (no traversal): {direction}")
+    _canonicalize_direction_argument(direction)
+
+
+def _canonicalize_direction_argument(direction: str) -> str:
+    try:
+        return canonicalize_direction_slug(direction)
+    except ValueError as exc:
+        raise ValueError(f"Invalid --direction: {exc}") from exc
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -212,8 +213,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             workspace = Path(args.workspace)
             if args.direction:
-                _validate_direction_argument(args.direction)
-                workspace = workspace / "directions" / args.direction
+                direction = _canonicalize_direction_argument(args.direction)
+                workspace = workspace / "directions" / direction
             report_path = compose_report(
                 workspace=workspace,
                 mode=args.mode,
@@ -230,10 +231,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "daily-pipeline":
         try:
+            direction = None
+            if args.direction:
+                direction = _canonicalize_direction_argument(args.direction)
             result = run_daily_pipeline(
                 PipelineConfig(
                     workspace=Path(args.workspace),
-                    direction=args.direction,
+                    direction=direction,
                     profile_path=(
                         Path(args.profile)
                         if _profile_path_was_overridden(raw_argv)
@@ -287,7 +291,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "finalize-github":
         try:
-            result = finalize_github(Path(args.workspace), direction=args.direction)
+            direction = None
+            if args.direction:
+                direction = _canonicalize_direction_argument(args.direction)
+            result = finalize_github(Path(args.workspace), direction=direction)
         except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
             print(f"GitHub finalize failed: {exc}", file=sys.stderr)
             return 1
