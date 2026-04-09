@@ -51,6 +51,18 @@ def _refuse_symlinked_ancestor(path: Path) -> None:
             raise OSError(f"Refusing to use workspace root with symlinked ancestor: {current}")
 
 
+def _shared_workspace_root_for_direction_root(root: Path) -> Path | None:
+    if root.parent.name != "directions":
+        return None
+
+    workspace_root = root.parent.parent
+    issue_intake_root = workspace_root / "issue-intake"
+    if not issue_intake_root.exists() or not issue_intake_root.is_dir():
+        return None
+
+    return workspace_root
+
+
 def ensure_workspace(root: Path) -> Path:
     _refuse_symlinked_ancestor(root)
     if root.is_symlink():
@@ -59,14 +71,14 @@ def ensure_workspace(root: Path) -> Path:
     # Some callers pass the direction execution root (e.g. `.../directions/<direction>`)
     # into helpers that call `ensure_workspace(...)`. Treat that as a direction workspace
     # root rather than creating shared roots nested inside it.
-    if root.parent.name == "directions":
+    workspace_root = _shared_workspace_root_for_direction_root(root)
+    if workspace_root is not None:
         direction = root.name
         try:
             _validate_direction(direction)
         except ValueError:
             direction = ""
         if direction:
-            workspace_root = root.parent.parent
             return ensure_direction_workspace(workspace_root, direction)
 
     root.mkdir(parents=True, exist_ok=True)

@@ -71,6 +71,21 @@ def test_ensure_workspace_treats_direction_root_as_direction_workspace(tmp_path)
     assert not (direction_root / "directions").exists()
 
 
+def test_ensure_workspace_does_not_misclassify_arbitrary_directions_parent(tmp_path) -> None:
+    root = tmp_path / "directions" / "research-workspace"
+
+    returned = ensure_workspace(root)
+
+    assert returned == root
+    assert (root / "profile").is_dir()
+    assert (root / "papers").is_dir()
+    assert (root / "reports" / "daily").is_dir()
+    assert (root / "reports" / "manual").is_dir()
+    assert (root / "issue-intake").is_dir()
+    assert (root / "directions").is_dir()
+    assert not (tmp_path / "profile").exists()
+
+
 def test_ensure_direction_workspace_rejects_symlinked_direction_root(tmp_path) -> None:
     workspace_root = tmp_path / "research-workspace"
     ensure_workspace(workspace_root)
