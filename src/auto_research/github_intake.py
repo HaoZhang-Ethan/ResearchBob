@@ -68,6 +68,18 @@ class FallbackProfileResult:
     repo: str | None
     issue_numbers: list[int]
     source_keys: list[str]
+    direction: str
+
+
+def discover_issue_directions(workspace: Path) -> list[str]:
+    issue_root = workspace / "issue-intake"
+    if not issue_root.exists():
+        return []
+    directions: list[str] = []
+    for direction_dir in sorted(path for path in issue_root.iterdir() if path.is_dir()):
+        if any((user_dir / "summary.md").exists() for user_dir in direction_dir.iterdir() if user_dir.is_dir()):
+            directions.append(direction_dir.name)
+    return directions
 
 
 IssueFetcher = Callable[[str, str, int], list[GitHubIssue]]
@@ -249,12 +261,18 @@ def _dedupe(items: list[str]) -> list[str]:
     return ordered
 
 
-def _collect_issue_intake_sources(workspace: Path) -> list[tuple[str, str, str]]:
+def _collect_issue_intake_sources(workspace: Path, direction: str | None = None) -> list[tuple[str, str, str]]:
     issue_root = workspace / "issue-intake"
     if not issue_root.exists():
         return []
+    if direction:
+        direction_dirs = [issue_root / direction]
+    else:
+        direction_dirs = sorted(path for path in issue_root.iterdir() if path.is_dir())
     sources: list[tuple[str, str, str]] = []
-    for direction_dir in sorted(path for path in issue_root.iterdir() if path.is_dir()):
+    for direction_dir in direction_dirs:
+        if not direction_dir.is_dir():
+            continue
         for user_dir in sorted(path for path in direction_dir.iterdir() if path.is_dir()):
             summary_path = user_dir / "summary.md"
             if not summary_path.exists():
@@ -267,6 +285,10 @@ def _collect_issue_numbers_for_source(user_dir: Path) -> list[int]:
     issue_numbers: list[int] = []
     for request_path in sorted((user_dir / "requests").glob("*.md")):
         metadata = _load_request_metadata(request_path)
+        if not metadata:
+            fallback_match = re.search(r"^issue_number\s*:\s*(\d+)", request_path.read_text(encoding="utf-8"), re.MULTILINE)
+            if fallback_match:
+                metadata["issue_number"] = fallback_match.group(1)
         value = metadata.get("issue_number", "").strip()
         if value.isdigit():
             issue_numbers.append(int(value))
@@ -279,15 +301,18 @@ def render_profile_from_issue_intake(workspace: Path) -> str:
 
 def build_fallback_profile_from_issue_intake(
     workspace: Path,
+    direction: str | None = None,
     repo: str | None = None,
 ) -> FallbackProfileResult:
-    sources = _collect_issue_intake_sources(workspace)
+    sources = _collect_issue_intake_sources(workspace, direction)
     if not sources:
+        if direction:
+            raise ValueError(f"No usable issue intake data available for direction: {direction}")
         raise ValueError("No usable issue intake data available to generate an interest profile")
 
-    source_lines = [f"> - {direction} / {username}" for direction, username, _ in sources]
-    source_keys = [f"{direction}/{username}" for direction, username, _ in sources]
-    core_interests = _dedupe([direction for direction, _, _ in sources])
+    source_lines = [f"> - {direction_name} / {username}" for direction_name, username, _ in sources]
+    source_keys = [f"{direction_name}/{username}" for direction_name, username, _ in sources]
+    core_interests = _dedupe([direction_name for direction_name, _, _ in sources])
     soft_boundaries: list[str] = []
     exclusions: list[str] = []
     current_phase_bias: list[str] = []
@@ -295,7 +320,7 @@ def build_fallback_profile_from_issue_intake(
     open_questions: list[str] = []
     issue_numbers: list[int] = []
 
-    for direction, _, text in sources:
+    for direction_name, _, text in sources:
         requirements = _extract_summary_section(text, "Requirements")
         constraints = _extract_summary_section(text, "Constraints")
         notes = _extract_summary_section(text, "Notes")
@@ -306,11 +331,11 @@ def build_fallback_profile_from_issue_intake(
         open_questions.extend([item for item in notes if "?" in item])
         soft_boundaries.extend([item for item in notes if "?" not in item])
         evaluation_heuristics.extend([item for item in requirements if "prefer" in item.lower() or "priority" in item.lower()])
-        soft_boundaries.extend([item for item in active_issues if direction not in item.lower()])
+        soft_boundaries.extend([item for item in active_issues if direction_name not in item.lower()])
 
     issue_root = workspace / "issue-intake"
-    for direction, username, _ in sources:
-        issue_numbers.extend(_collect_issue_numbers_for_source(issue_root / direction / username))
+    for direction_name, username, _ in sources:
+        issue_numbers.extend(_collect_issue_numbers_for_source(issue_root / direction_name / username))
 
     sections = {
         "Core Interests": _dedupe(core_interests + current_phase_bias[:2]) or ["issue-intake derived research topics"],
@@ -338,6 +363,7 @@ def build_fallback_profile_from_issue_intake(
         repo=repo,
         issue_numbers=sorted(set(issue_numbers)),
         source_keys=source_keys,
+        direction=direction or "all",
     )
 
 

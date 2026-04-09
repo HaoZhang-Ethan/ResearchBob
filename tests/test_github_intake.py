@@ -11,6 +11,7 @@ from auto_research.github_intake import (
     IssueSyncConfig,
     _stage_commit_push_issue_intake,
     build_fallback_profile_from_issue_intake,
+    discover_issue_directions,
     close_issue,
     comment_on_issue,
     fetch_github_issues,
@@ -84,6 +85,17 @@ def test_sync_issues_skips_unchanged_request_files(tmp_path) -> None:
 
     assert first.changed_request_count == 1
     assert second.changed_request_count == 0
+
+
+def test_discover_issue_directions_returns_only_usable_direction_roots(tmp_path) -> None:
+    workspace = tmp_path / "research-workspace"
+    usable = workspace / "issue-intake" / "llm-agents" / "alice"
+    ignored = workspace / "issue-intake" / "robotics" / "bob"
+    (usable / "requests").mkdir(parents=True, exist_ok=True)
+    (usable / "summary.md").write_text("# Issue Intake Summary: llm-agents / alice\n", encoding="utf-8")
+    ignored.mkdir(parents=True, exist_ok=True)
+
+    assert discover_issue_directions(workspace) == ["llm-agents"]
 
 
 def test_fetch_github_issues_uses_gh_json_output(monkeypatch) -> None:
@@ -219,6 +231,56 @@ url: "https://github.com/example/research/issues/12"
 
     assert isinstance(result, FallbackProfileResult)
     assert result.repo == "example/research"
+    assert result.issue_numbers == [12]
+    assert result.source_keys == ["llm-agents/alice"]
+
+
+def test_build_fallback_profile_from_issue_intake_uses_only_requested_direction(tmp_path) -> None:
+    workspace = tmp_path / "research-workspace"
+    llm_dir = workspace / "issue-intake" / "llm-agents" / "alice" / "requests"
+    robo_dir = workspace / "issue-intake" / "robotics" / "bob" / "requests"
+    llm_dir.mkdir(parents=True, exist_ok=True)
+    robo_dir.mkdir(parents=True, exist_ok=True)
+
+    (llm_dir.parent / "summary.md").write_text(
+        """# Issue Intake Summary: llm-agents / alice
+
+- Direction: `llm-agents`
+- GitHub Username: `alice`
+- Request Count: 1
+
+## Active Issues
+- #12: Track multi-agent papers (OPEN)
+
+## Requirements
+- prefer strong system design
+- focus on memory and orchestration
+""",
+        encoding="utf-8",
+    )
+    (robo_dir.parent / "summary.md").write_text(
+        """# Issue Intake Summary: robotics / bob
+
+- Direction: `robotics`
+- GitHub Username: `bob`
+- Request Count: 1
+
+## Active Issues
+- #34: Track robot grasping papers (OPEN)
+""",
+        encoding="utf-8",
+    )
+    (llm_dir / "12.md").write_text("issue_number: 12\n", encoding="utf-8")
+    (robo_dir / "34.md").write_text("issue_number: 34\n", encoding="utf-8")
+
+    result = build_fallback_profile_from_issue_intake(
+        workspace,
+        direction="llm-agents",
+        repo="example/research",
+    )
+
+    assert "llm-agents / alice" in result.markdown
+    assert "robotics / bob" not in result.markdown
     assert result.issue_numbers == [12]
     assert result.source_keys == ["llm-agents/alice"]
 
