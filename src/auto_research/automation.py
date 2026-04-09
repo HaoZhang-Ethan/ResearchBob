@@ -412,7 +412,13 @@ def _infer_direction_from_profile_path(workspace: Path, profile_path: Path | Non
         return None
     candidate = profile_path
     if not candidate.is_absolute():
-        candidate = workspace / candidate
+        # CLI users often pass paths like `research-workspace/directions/<dir>/profile/interest-profile.md`.
+        # Treat that as workspace-relative rather than nesting another `research-workspace/` segment.
+        parts = candidate.parts
+        if len(parts) >= 1 and parts[0] == workspace.name:
+            candidate = workspace.parent / candidate
+        else:
+            candidate = workspace / candidate
     try:
         relative = candidate.relative_to(workspace)
     except ValueError:
@@ -432,6 +438,26 @@ def _discover_direction_profiles(workspace: Path) -> list[str]:
         if (direction_dir / "profile" / "interest-profile.md").exists():
             directions.append(direction_dir.name)
     return directions
+
+
+def _resolve_profile_path(
+    shared_workspace: Path,
+    execution_workspace: Path,
+    requested_profile_path: Path | None,
+) -> Path:
+    if requested_profile_path is None:
+        return execution_workspace / "profile" / "interest-profile.md"
+
+    if requested_profile_path.is_absolute():
+        return requested_profile_path
+
+    # Support CLI-style values like `research-workspace/directions/<dir>/profile/interest-profile.md`.
+    parts = requested_profile_path.parts
+    if parts and parts[0] == shared_workspace.name:
+        return shared_workspace.parent / requested_profile_path
+
+    # Default to workspace-relative paths.
+    return shared_workspace / requested_profile_path
 
 
 def _resolve_run_direction(
@@ -554,7 +580,7 @@ def run_daily_pipeline(
     direction = _resolve_run_direction(shared_workspace, config.direction, config.profile_path)
     execution_workspace = ensure_direction_workspace(shared_workspace, direction)
     label = config.label or _default_label()
-    profile_path = config.profile_path or execution_workspace / "profile" / "interest-profile.md"
+    profile_path = _resolve_profile_path(shared_workspace, execution_workspace, config.profile_path)
     profile_path, fallback = _ensure_profile_exists_with_metadata(
         shared_workspace,
         execution_workspace,
