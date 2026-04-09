@@ -100,8 +100,8 @@ Typical flow:
 ```bash
 PYTHONPATH=src python -m auto_research.cli init-workspace --workspace research-workspace
 PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace
-PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace
-PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace --direction llm-agents
+PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace --direction llm-agents
 ```
 
 Important commands:
@@ -147,8 +147,8 @@ Operators later run:
 
 ```bash
 PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace
-PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace
-PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace --direction llm-agents
+PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace --direction llm-agents
 ```
 
 #### User Side
@@ -165,9 +165,9 @@ In this repository, you can directly open an issue and the project will periodic
 Important output directories:
 
 ```text
-research-workspace/reports/daily/
-research-workspace/papers/
-research-workspace/exports/zotero/
+research-workspace/directions/<direction>/reports/daily/
+research-workspace/directions/<direction>/papers/
+research-workspace/directions/<direction>/exports/zotero/
 ```
 
 Issue format:
@@ -213,8 +213,8 @@ This side is responsible for:
 
 Key details:
 
-- `daily-pipeline` may auto-generate `profile/interest-profile.md` if it is missing
-- `finalize-github` reads `research-workspace/pipeline/github-finalize.json`
+- `daily-pipeline` may auto-generate `directions/<direction>/profile/interest-profile.md` if it is missing
+- `finalize-github --direction <direction>` reads `research-workspace/directions/<direction>/pipeline/github-finalize.json`
 - `finalize-github` exists so GitHub actions can run separately from arXiv/model calls
 
 #### Draft the Issue With AI
@@ -399,8 +399,8 @@ ResearchBob 是一套本地研究工作流，用来把 GitHub issue 里的研究
 ```bash
 PYTHONPATH=src python -m auto_research.cli init-workspace --workspace research-workspace
 PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace
-PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace
-PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace --direction llm-agents
+PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace --direction llm-agents
 ```
 
 几个关键命令：
@@ -446,8 +446,8 @@ PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-
 
 ```bash
 PYTHONPATH=src python -m auto_research.cli sync-issues --workspace research-workspace
-PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace
-PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace --direction llm-agents
+PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace --direction llm-agents
 ```
 
 #### 用户侧
@@ -464,9 +464,9 @@ PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-
 关键输出目录：
 
 ```text
-research-workspace/reports/daily/
-research-workspace/papers/
-research-workspace/exports/zotero/
+research-workspace/directions/<direction>/reports/daily/
+research-workspace/directions/<direction>/papers/
+research-workspace/directions/<direction>/exports/zotero/
 ```
 
 Issue 格式：
@@ -511,8 +511,8 @@ direction: llm-agents
 
 关键细节：
 
-- 如果 `profile/interest-profile.md` 缺失，`daily-pipeline` 可能自动生成它
-- `finalize-github` 读取 `research-workspace/pipeline/github-finalize.json`
+- 如果 `directions/<direction>/profile/interest-profile.md` 缺失，`daily-pipeline` 可能自动生成它
+- `finalize-github --direction <direction>` 读取 `research-workspace/directions/<direction>/pipeline/github-finalize.json`
 - `finalize-github` 的存在，就是为了把 GitHub 操作从论文总结本身解耦
 
 #### 利用 AI 凝练 Issue

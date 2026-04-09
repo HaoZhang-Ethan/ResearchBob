@@ -19,7 +19,7 @@ export AUTO_RESEARCH_MODEL=gpt-5.2
 From the repo root:
 
 ```bash
-PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace --push
+PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace --direction llm-agents --push
 ```
 
 Or use the wrapper:
@@ -28,15 +28,27 @@ Or use the wrapper:
 PYTHONPATH=src python scripts/daily_pipeline.py
 ```
 
-If `research-workspace/profile/interest-profile.md` is missing, `daily-pipeline` will attempt to synthesize it from `research-workspace/issue-intake/` before the run continues.
+When you pass `--direction <direction>`, generated artifacts are written under:
+
+```text
+research-workspace/directions/<direction>/
+```
+
+GitHub finalize state is also direction-local under:
+
+```text
+research-workspace/directions/<direction>/pipeline/
+```
+
+If `research-workspace/directions/<direction>/profile/interest-profile.md` is missing, `daily-pipeline --direction <direction>` will attempt to synthesize it from `research-workspace/issue-intake/<direction>/` before the run continues.
 
 When that fallback path is used and the run succeeds, the workflow can also comment on and close the consumed GitHub issues on a best-effort basis.
 
 If GitHub access needs a different network environment than arXiv/model access, use:
 
 ```bash
-PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace
-PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace
+PYTHONPATH=src python -m auto_research.cli daily-pipeline --workspace research-workspace --direction llm-agents
+PYTHONPATH=src python -m auto_research.cli finalize-github --workspace research-workspace --direction llm-agents
 ```
 
 ## GitHub Issue Intake

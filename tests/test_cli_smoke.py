@@ -66,7 +66,11 @@ def test_build_parser_includes_sync_issues_command() -> None:
 def test_finalize_github_cli_runs(monkeypatch, capsys, tmp_path) -> None:
     monkeypatch.setattr(
         "auto_research.cli.finalize_github",
-        lambda workspace: {"status": "completed", "label": "2026-04-04", "consumed_issue_numbers": [12]},
+        lambda workspace, direction=None: {
+            "status": "completed",
+            "label": "2026-04-04",
+            "consumed_issue_numbers": [12],
+        },
     )
 
     exit_code = cli_main(["finalize-github", "--workspace", str(tmp_path / "research-workspace")])
@@ -88,3 +92,37 @@ def test_build_parser_includes_finalize_github_command() -> None:
 
     assert result.returncode == 0
     assert "finalize-github" in result.stdout
+
+
+def test_daily_pipeline_cli_passes_direction(monkeypatch, capsys, tmp_path) -> None:
+    captured = {}
+
+    def fake_run_daily_pipeline(config):
+        captured["direction"] = config.direction
+        return type("Result", (), {"report_path": tmp_path / "report.md", "ris_path": tmp_path / "out.ris"})()
+
+    monkeypatch.setattr("auto_research.cli.run_daily_pipeline", fake_run_daily_pipeline)
+
+    exit_code = cli_main(
+        ["daily-pipeline", "--workspace", str(tmp_path / "research-workspace"), "--direction", "llm-agents"]
+    )
+
+    assert exit_code == 0
+    assert captured["direction"] == "llm-agents"
+
+
+def test_finalize_github_cli_passes_direction(monkeypatch, capsys, tmp_path) -> None:
+    captured = {}
+
+    def fake_finalize_github(workspace, direction=None):
+        captured["direction"] = direction
+        return {"status": "completed", "label": "2026-04-09", "consumed_issue_numbers": [12]}
+
+    monkeypatch.setattr("auto_research.cli.finalize_github", fake_finalize_github)
+
+    exit_code = cli_main(
+        ["finalize-github", "--workspace", str(tmp_path / "research-workspace"), "--direction", "llm-agents"]
+    )
+
+    assert exit_code == 0
+    assert captured["direction"] == "llm-agents"
