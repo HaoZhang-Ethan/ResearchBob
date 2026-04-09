@@ -547,6 +547,8 @@ def finalize_github(workspace: Path, direction: str | None = None) -> dict[str, 
     _validate_direction_segment(resolved_direction)
     # Avoid creating a new direction workspace when the finalize state doesn't exist.
     execution_workspace = shared_workspace / "directions" / resolved_direction
+    if execution_workspace.is_symlink():
+        raise OSError(f"Refusing to use symlinked workspace directory: {execution_workspace}")
     state_path = _github_finalize_state_path(execution_workspace)
     if not state_path.exists():
         raise ValueError("No pending GitHub finalize work found")
