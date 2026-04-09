@@ -532,7 +532,8 @@ def _write_github_finalize_state(
 def finalize_github(workspace: Path, direction: str | None = None) -> dict[str, object]:
     shared_workspace = ensure_workspace(workspace)
     resolved_direction = _resolve_run_direction(shared_workspace, direction, None)
-    execution_workspace = ensure_direction_workspace(shared_workspace, resolved_direction)
+    # Avoid creating a new direction workspace when the finalize state doesn't exist.
+    execution_workspace = shared_workspace / "directions" / resolved_direction
     state_path = _github_finalize_state_path(execution_workspace)
     if not state_path.exists():
         raise ValueError("No pending GitHub finalize work found")

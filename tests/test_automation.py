@@ -1074,6 +1074,18 @@ def test_finalize_github_fails_when_state_missing(tmp_path) -> None:
         finalize_github(workspace, direction="llm-agents")
 
 
+def test_finalize_github_missing_state_does_not_create_direction_tree(tmp_path) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    missing_dir = workspace / "directions" / "missing-dir"
+    assert not missing_dir.exists()
+
+    with pytest.raises(ValueError, match="No pending GitHub finalize work"):
+        finalize_github(workspace, direction="missing-dir")
+
+    assert not missing_dir.exists()
+
+
 def test_finalize_github_skips_completed_state(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
     ensure_direction_workspace(workspace, "llm-agents")
