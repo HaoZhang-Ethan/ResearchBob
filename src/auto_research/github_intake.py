@@ -285,10 +285,6 @@ def _collect_issue_numbers_for_source(user_dir: Path) -> list[int]:
     issue_numbers: list[int] = []
     for request_path in sorted((user_dir / "requests").glob("*.md")):
         metadata = _load_request_metadata(request_path)
-        if not metadata:
-            fallback_match = re.search(r"^issue_number\s*:\s*(\d+)", request_path.read_text(encoding="utf-8"), re.MULTILINE)
-            if fallback_match:
-                metadata["issue_number"] = fallback_match.group(1)
         value = metadata.get("issue_number", "").strip()
         if value.isdigit():
             issue_numbers.append(int(value))

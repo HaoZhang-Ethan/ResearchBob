@@ -270,8 +270,36 @@ def test_build_fallback_profile_from_issue_intake_uses_only_requested_direction(
 """,
         encoding="utf-8",
     )
-    (llm_dir / "12.md").write_text("issue_number: 12\n", encoding="utf-8")
-    (robo_dir / "34.md").write_text("issue_number: 34\n", encoding="utf-8")
+    (llm_dir / "12.md").write_text(
+        """---
+issue_number: 12
+title: "Track multi-agent papers"
+state: "OPEN"
+author_login: "alice"
+direction: "llm-agents"
+normalized_direction: "llm-agents"
+created_at: "2026-04-03T10:00:00Z"
+updated_at: "2026-04-03T11:00:00Z"
+url: "https://github.com/example/research/issues/12"
+---
+""",
+        encoding="utf-8",
+    )
+    (robo_dir / "34.md").write_text(
+        """---
+issue_number: 34
+title: "Track robot grasping papers"
+state: "OPEN"
+author_login: "bob"
+direction: "robotics"
+normalized_direction: "robotics"
+created_at: "2026-04-03T10:00:00Z"
+updated_at: "2026-04-03T11:00:00Z"
+url: "https://github.com/example/research/issues/34"
+---
+""",
+        encoding="utf-8",
+    )
 
     result = build_fallback_profile_from_issue_intake(
         workspace,
