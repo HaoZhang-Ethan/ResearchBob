@@ -1,49 +1,31 @@
-# Reviewer Modes
+# Committee Review Roles
 
-Use these as the default reviewer templates.
+## Committee Overview
 
-## Top-Conference Reviewer
+- The committee combines broad-field and niche-field reviewers plus an Area Chair/AE to ensure balanced scrutiny.
+- Broad reviewers focus on whether the work matters, how it is framed, and whether it belongs at the target venue; niche reviewers dig into the technical core and narrow novelty.
+- The AE synthesizes all input, highlights consensus or disagreement, and takes responsibility for the final score and reviewer calibration.
 
-Questions to ask:
+## Broad-Field Reviewers
 
-- Is the problem important enough for the target venue?
-- Is the story coherent from abstract to conclusion?
-- Is the novelty statement clear?
-- Is the paper overclaiming?
-- Is the positioning against related work reviewer-friendly?
+- Evaluate significance, framing, and the novelty boundary from the perspective of the larger parent field.
+- Judge clarity of the story, how well it orients unfamiliar readers, and whether the contribution is a good fit for the venue.
+- Surface gaps in motivation or positioning that would prevent the work from resonating with the broader audience.
 
-Common comment patterns:
+## Niche-Field Reviewers
 
-- “The novelty is incremental relative to ...”
-- “The positioning against related work is unclear.”
-- “The story is appealing, but the technical contribution feels narrower.”
-- “The claimed contribution boundary is not clean.”
+- Scrutinize technical depth, hidden assumptions, and missing baselines or ablations that affect reproducibility and claims.
+- Confirm whether the contribution is genuinely new within the narrow subfield and whether the evaluation is sufficient.
+- Call out subtle methodological risks, unsupported assertions, or overstated generality that a niche expert would detect.
 
-## Strict Technical Reviewer
+## Area Chair / AE
 
-Questions to ask:
+- Reads the paper and all five completed reviews, then explains where reviewers agree or diverge.
+- Assigns the final score based on the evidence in the paper and the calibration of the committee.
+- Audits that each reviewer remained objective, well-calibrated, and aligned with their assigned focus.
 
-- What assumptions are hidden?
-- What exact claim does each experiment support?
-- Which baseline is missing or underpowered?
-- Where could a reviewer misunderstand the method?
-- What sentence or paragraph is likely to trigger “I do not buy this”?
+## Independence and Anti-Contamination Rules
 
-Common comment patterns:
-
-- “The method description leaves ambiguity about ...”
-- “The evidence is insufficient to support ...”
-- “A stronger baseline or ablation is needed.”
-- “It is unclear whether the gain comes from X or Y.”
-
-## Mixed-Mode Policy
-
-Run both modes in sequence.
-
-1. Use the top-conference reviewer to challenge story, novelty, and framing.
-2. Use the strict technical reviewer to challenge details, assumptions, and evidence.
-3. Merge the results into:
-   - reviewer comments
-   - author response ideas
-   - revision checklist
-   - write-back phrasing
+- Reviewer assignments are generated before any full review is written.
+- Each reviewer sees only the paper package, the reviewer-safe committee rationale, and that reviewer’s assignment sheet; they must not see other reviewer outputs or AE synthesis.
+- The AE sees the paper plus the five completed reviews once they are all submitted.
