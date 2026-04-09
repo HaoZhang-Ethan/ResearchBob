@@ -51,6 +51,18 @@ def test_ensure_direction_workspace_creates_direction_local_directories(tmp_path
     assert (root / "pipeline").is_dir()
 
 
+def test_ensure_direction_workspace_rejects_symlinked_direction_root(tmp_path) -> None:
+    workspace_root = tmp_path / "research-workspace"
+    ensure_workspace(workspace_root)
+    outside = tmp_path / "outside-direction"
+    outside.mkdir(parents=True, exist_ok=True)
+    symlink_root = workspace_root / "directions" / "llm-agents"
+    os.symlink(outside, symlink_root)
+
+    with pytest.raises(OSError, match="symlink"):
+        ensure_direction_workspace(workspace_root, "llm-agents")
+
+
 def test_ensure_workspace_rejects_symlinked_root(tmp_path) -> None:
     outside = tmp_path / "outside"
     outside.mkdir(parents=True, exist_ok=True)
