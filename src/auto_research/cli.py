@@ -16,7 +16,7 @@ from auto_research.intake import IntakeDataError, IntakeProfileError, run_intake
 from auto_research.profile import validate_interest_profile_text
 from auto_research.registry import RegistryCorruptionError
 from auto_research.report import compose_report
-from auto_research.workspace import ensure_workspace
+from auto_research.workspace import ensure_direction_workspace, ensure_workspace
 from auto_research.automation import PipelineConfig, finalize_github, run_daily_pipeline
 
 
@@ -26,10 +26,6 @@ def _raw_argv(argv: Sequence[str] | None) -> list[str]:
 
 def _profile_path_was_overridden(argv: Sequence[str]) -> bool:
     return any(argument == "--profile" or argument.startswith("--profile=") for argument in argv)
-
-
-def _validate_direction_argument(direction: str) -> None:
-    _canonicalize_direction_argument(direction)
 
 
 def _canonicalize_direction_argument(direction: str) -> str:
@@ -212,9 +208,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "compose-report":
         try:
             workspace = Path(args.workspace)
-            if args.direction:
+            if args.direction is not None:
                 direction = _canonicalize_direction_argument(args.direction)
-                workspace = workspace / "directions" / direction
+                workspace = ensure_direction_workspace(workspace, direction)
             report_path = compose_report(
                 workspace=workspace,
                 mode=args.mode,
@@ -232,7 +228,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "daily-pipeline":
         try:
             direction = None
-            if args.direction:
+            if args.direction is not None:
                 direction = _canonicalize_direction_argument(args.direction)
             result = run_daily_pipeline(
                 PipelineConfig(
@@ -292,7 +288,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "finalize-github":
         try:
             direction = None
-            if args.direction:
+            if args.direction is not None:
                 direction = _canonicalize_direction_argument(args.direction)
             result = finalize_github(Path(args.workspace), direction=direction)
         except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:

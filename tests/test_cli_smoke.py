@@ -275,3 +275,31 @@ def test_compose_report_cli_rejects_absolute_direction(monkeypatch, capsys, tmp_
     assert exit_code == 1
     assert captured["called"] is False
     assert "Invalid --direction" in captured_io.err
+
+
+def test_compose_report_cli_direction_initializes_shared_root_without_nested_dirs(capsys, tmp_path) -> None:
+    workspace_root = tmp_path / "research-workspace"
+
+    exit_code = cli_main(
+        [
+            "compose-report",
+            "--workspace",
+            str(workspace_root),
+            "--direction",
+            "llm-agents",
+            "--label",
+            "2026-04-09",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    direction_root = workspace_root / "directions" / "llm-agents"
+    report_path = direction_root / "reports" / "daily" / "2026-04-09.md"
+
+    assert exit_code == 0
+    assert str(report_path) in captured.out
+    assert (workspace_root / "issue-intake").is_dir()
+    assert (workspace_root / "directions").is_dir()
+    assert report_path.exists()
+    assert not (direction_root / "issue-intake").exists()
+    assert not (direction_root / "directions").exists()
