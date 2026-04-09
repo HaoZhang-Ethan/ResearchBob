@@ -343,3 +343,12 @@ def test_close_issue_uses_gh_issue_close(monkeypatch) -> None:
     close_issue(repo="example/research", issue_number=12)
 
     assert calls == [["gh", "issue", "close", "12", "--repo", "example/research"]]
+
+
+
+def test_build_fallback_profile_from_issue_intake_rejects_blank_direction(tmp_path) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    with pytest.raises(ValueError, match="direction"):
+        build_fallback_profile_from_issue_intake(workspace, direction="")
+

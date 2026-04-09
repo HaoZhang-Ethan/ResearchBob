@@ -300,6 +300,8 @@ def build_fallback_profile_from_issue_intake(
     direction: str,
     repo: str | None = None,
 ) -> FallbackProfileResult:
+    if not direction or not direction.strip():
+        raise ValueError("direction must be a non-empty string")
     sources = _collect_issue_intake_sources(workspace, direction)
     if not sources:
         raise ValueError(f"No usable issue intake data available for direction: {direction}")
