@@ -150,6 +150,11 @@ def test_run_daily_pipeline_writes_outputs_under_direction_workspace(tmp_path, m
     assert result.ris_path == direction_root / "exports" / "zotero" / "2026-04-09.ris"
     assert result.history_path == direction_root / "pipeline" / "run-history.jsonl"
 
+    # Regression: pipeline helpers may call ensure_workspace(execution_workspace). That must
+    # not create nested shared-workspace roots inside the direction workspace.
+    assert not (direction_root / "issue-intake").exists()
+    assert not (direction_root / "directions").exists()
+
 
 def test_run_daily_pipeline_infers_direction_from_single_direction_profile(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"

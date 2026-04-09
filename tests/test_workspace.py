@@ -51,6 +51,26 @@ def test_ensure_direction_workspace_creates_direction_local_directories(tmp_path
     assert (root / "pipeline").is_dir()
 
 
+def test_ensure_workspace_treats_direction_root_as_direction_workspace(tmp_path) -> None:
+    workspace_root = tmp_path / "research-workspace"
+    direction_root = ensure_direction_workspace(workspace_root, "llm-agents")
+
+    returned = ensure_workspace(direction_root)
+
+    assert returned == direction_root
+    assert (direction_root / "profile").is_dir()
+    assert (direction_root / "papers").is_dir()
+    assert (direction_root / "reports" / "daily").is_dir()
+    assert (direction_root / "reports" / "manual").is_dir()
+    assert (direction_root / "reports" / "longterm").is_dir()
+    assert (direction_root / "exports" / "zotero").is_dir()
+    assert (direction_root / "pipeline").is_dir()
+
+    # Regression: ensure_workspace(direction_root) must not create nested shared roots.
+    assert not (direction_root / "issue-intake").exists()
+    assert not (direction_root / "directions").exists()
+
+
 def test_ensure_direction_workspace_rejects_symlinked_direction_root(tmp_path) -> None:
     workspace_root = tmp_path / "research-workspace"
     ensure_workspace(workspace_root)

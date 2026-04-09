@@ -56,6 +56,19 @@ def ensure_workspace(root: Path) -> Path:
     if root.is_symlink():
         raise OSError(f"Refusing to use symlinked workspace root: {root}")
 
+    # Some callers pass the direction execution root (e.g. `.../directions/<direction>`)
+    # into helpers that call `ensure_workspace(...)`. Treat that as a direction workspace
+    # root rather than creating shared roots nested inside it.
+    if root.parent.name == "directions":
+        direction = root.name
+        try:
+            _validate_direction(direction)
+        except ValueError:
+            direction = ""
+        if direction:
+            workspace_root = root.parent.parent
+            return ensure_direction_workspace(workspace_root, direction)
+
     root.mkdir(parents=True, exist_ok=True)
 
     for relative_path in PHASE1_DIRECTORIES:
