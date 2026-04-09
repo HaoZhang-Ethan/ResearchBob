@@ -22,7 +22,7 @@
 
 ## Current Problem Clusters
 - **LLM agents: reliability and control in realistic deployment**
-  - Long-horizon planning, consistent execution, and adaptation under delayed consequences
+  - Long-horizon planning, execution consistency, and adaptation under delayed consequences
   - Interruptibility and mid-trajectory goal revision
   - Shared-state memory, cross-user contamination, and scope-aware persistence
   - Runtime oversight via critics, behavioral gating, and anti-sycophancy controls
@@ -45,21 +45,21 @@
 
 ## Recurring Gaps / Common Weaknesses
 - **Benchmark-to-deployment gap**
-  - Many agent papers diagnose failures well but stop at benchmark exposure rather than deployable fixes.
+  - Many agent papers expose failures well but stop short of deployable fixes.
 - **State semantics gap**
   - Memory and persistence remain weakly specified: what is shared, who owns it, when it is valid, and how it is revised are often unclear.
 - **Isolation and authority gap**
   - Shared-state agents still lack principled user isolation, artifact scoping, and authority boundaries; text sanitization alone is insufficient when executable artifacts persist.
 - **Control/corrigibility gap**
-  - Interruptibility, anti-sycophancy, and critic-style oversight often look like runtime patching rather than solutions to objective misspecification or uncertainty-aware action selection.
+  - Interruptibility, anti-sycophancy, and critic-style oversight often act as runtime patches rather than addressing objective misspecification or uncertainty-aware action selection.
 - **Mechanism gap in multi-agent safety**
-  - Work on collusion/coordination often emphasizes detection after the fact rather than incentive design, enforceable constraints, or protocol-level prevention.
+  - Work on collusion/coordination still emphasizes detection after the fact more than incentive design, enforceable constraints, or protocol-level prevention.
 - **Long-horizon competence gap**
-  - Strong models still fail on persistent planning due to weak scratchpad use, adversarial-state handling, compounding mistakes, and over-parallelization.
+  - Strong models still fail on persistent planning because of weak scratchpad use, adversarial-state handling, compounding mistakes, and over-parallelization.
 - **Artifact quality gap for agent tooling**
   - Task success can hide poor tool-library health: redundancy, regressions, brittle composition, and unsafe code evolution.
 - **Skill-transfer gap**
-  - Retrieval-based skills add token overhead and noise; internalization is promising but evidence is still task-bounded.
+  - Retrieval-based skills add token overhead and noise; internalization is promising but evidence remains task-bounded.
 - **NV-specificity gap**
   - For NV-FPGA, the key filter remains whether persistence materially changes security, provisioning, or deployment advantage over SRAM FPGA baselines.
 - **Lifecycle evaluation gap in NV-FPGA security**
@@ -69,20 +69,20 @@
 - **Security-vs-search-space gap in mutation-based identity schemes**
   - Huge claimed cipher/configuration families do not by themselves establish clone resistance; the real question is whether attackers can recover, emulate, or learn the instantiated structure under realistic access.
 - **Protocol gap in configuration-derived identity**
-  - Enrollment, authentication, challenge exposure limits, and verifier trust assumptions are often underspecified even when the hardware primitive itself is novel.
+  - Enrollment, authentication, challenge exposure limits, verifier trust assumptions, and revocation/update handling are often underspecified even when the primitive itself is novel.
 
 ## New Insights
 - The strongest active intake remains **LLM-agent issue scouting**, especially papers exposing realistic reliability failures rather than pure capability gains.
 - A major emerging systems problem is **shared-state contamination**: benign multi-user reuse of memory/artifacts can silently degrade later outcomes, especially when executable artifacts are shared.
-- **Interruptibility and changing user intent** now look like first-class requirements for deployed agents, not edge cases.
-- Long-horizon benchmarks are increasingly useful when they expose concrete mechanisms of failure, especially **memory persistence strategy, adversarial detection, and compounding execution errors**.
+- **Interruptibility and changing user intent** now look like first-class deployment requirements, not edge cases.
+- Long-horizon benchmarks are most valuable when they expose concrete failure mechanisms, especially **memory persistence strategy, adversarial detection, and compounding execution errors**.
 - Runtime oversight appears to be bifurcating into two promising styles: **critic/supervisor architectures** for action monitoring and **behavioral gating** for targeted control failures like sycophancy.
 - Multi-agent work is splitting into two important tracks: **productive autonomy** and **safety oversight**.
-- Tool-generation research is improving by treating the tool library as a **software artifact** rather than evaluating only downstream task completion.
+- Tool-generation research is improving when it treats the tool library as a **software artifact** rather than evaluating only downstream task completion.
 - In NV-FPGA, the clearest hardware direction remains **persistent, configuration-derived identity and clone resistance**, including digital self-mutation ideas that use non-volatile configuration itself as the trust substrate.
-- The NV-FPGA security subtrack is becoming more sharply defined: the interesting question is not just uniqueness, but whether **persistent secret structure in configuration** can serve as a credible trust anchor under realistic extraction and lifecycle assumptions.
+- The NV-FPGA security subtrack is now more sharply defined: the interesting question is not just uniqueness, but whether **persistent secret structure in configuration** can serve as a credible trust anchor under realistic extraction and lifecycle assumptions.
 - The SUC-style NV-FPGA paper strengthens a specific subdirection: **controlled, design-rule-safe bitstream mutation** may be a practical way to generate per-device digital identities in NV-FPGAs, potentially offering a more stable alternative to analog PUFs.
-- The most important caveat from that paper is now clearer: **configuration secrecy is not automatically physical unclonability**; the decisive filters are readback assumptions, invasive/side-channel resistance, query leakage, provisioning trust, and protocol design.
+- The key caveat is now clearer: **configuration secrecy is not automatically physical unclonability**; decisive filters are readback assumptions, invasive/side-channel resistance, query leakage, provisioning trust, and protocol design.
 - A useful framing shift is emerging for NV-FPGA work: move from **manufacturing randomness as identity** toward **controlled configuration diversity as identity**, but require attack-grounded validation before treating it as true clone resistance.
 
 ## Most Promising Directions
@@ -93,7 +93,7 @@
 - **Track benchmarks that expose actionable failure taxonomies**
   - Best targets: long-horizon execution, changing goals, persistent state, multi-user settings, tool maintenance, and industrial orchestration.
 - **Follow runtime supervision architectures**
-  - Critic-based monitoring and asymmetric oversight look promising when they improve reliability without requiring retraining the main actor.
+  - Critic-based monitoring and asymmetric oversight look promising when they improve reliability without retraining the main actor.
 - **Watch skill internalization closely**
   - Internalizing skills may reduce retrieval noise and context cost if it generalizes beyond narrow benchmarks.
 - **Track multi-agent oversight beyond text-level monitoring**
