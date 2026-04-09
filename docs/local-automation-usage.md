@@ -28,7 +28,7 @@ Or use the wrapper:
 PYTHONPATH=src python scripts/daily_pipeline.py
 ```
 
-Note: `scripts/daily_pipeline.py` is a convenience wrapper, not the general entrypoint for direction-scoped runs. If you want direction-local artifacts under `research-workspace/directions/<direction>/`, prefer the CLI form with `--direction <direction>`.
+Note: `scripts/daily_pipeline.py` is a convenience wrapper that infers the direction from the current workspace metadata, so it is safe only when that inference is unambiguous (for example, single-direction workspaces or direction-specific checkout states). In multi-direction workspaces the wrapper cannot decide which direction to run, so prefer the CLI entrypoint with `--direction <direction>` if you need direction-scoped artifacts under `research-workspace/directions/<direction>/`.
 
 When you pass `--direction <direction>`, generated artifacts are written under:
 
