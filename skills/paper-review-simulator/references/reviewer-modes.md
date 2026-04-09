@@ -20,12 +20,11 @@
 
 ## Area Chair / AE
 
-- Reads the paper and all five completed reviews, then explains where reviewers agree or diverge.
+- Reads the paper, the reviewer-safe committee rationale, the consolidated `Reviewer Assignment Sheet`, and all five completed reviews, then explains where reviewers agree or diverge.
 - Assigns the final score based on the evidence in the paper and the calibration of the committee.
 - Audits that each reviewer remained objective, well-calibrated, and aligned with their assigned focus.
 
 ## Independence and Anti-Contamination Rules
 
-- Reviewer assignments are generated before any full review is written.
-- Each reviewer sees only the paper package, the reviewer-safe committee rationale, and that reviewer’s assignment sheet; they must not see other reviewer outputs or AE synthesis.
-- The AE sees the paper plus the five completed reviews once they are all submitted.
+- When isolated agents or fresh sessions are available, strict visibility isolation is required (assignments before reviews, each reviewer sees only their sheet and the reviewer-safe rationale, and the AE only sees the paper, rationale, consolidated `Reviewer Assignment Sheet`, and all five reviews).
+- Fallback single-session mode is a best-effort emulation that keeps the staged sequence—topic triage, private assignments, reviewer drafts, then AE—but still defers the consolidated `Reviewer Assignment Sheet` until after all five reviewer drafts complete.

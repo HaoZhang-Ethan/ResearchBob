@@ -1,6 +1,6 @@
 # Paper Review Input Template
 
-Use this template when giving the skill a paper to review.
+Use this template when giving the skill a paper to review as part of a 5-reviewer committee plus AE meta-review workflow.
 
 ## Review Context (Optional)
 

@@ -12,14 +12,16 @@ Use this skill to simulate a committee-style review before submission. The skill
 ## Workflow
 
 1. Read the paper package and the author's concerns.
-2. Perform topic triage and write a short, reviewer-safe `committee assignment rationale`.
-3. Generate five private reviewer assignment sheets:
+2. Read `skills/paper-review-simulator/references/reviewer-modes.md` so you are grounded in the committee roles (broad, niche, AE) before assigning reviewers or drafting reviews.
+3. Perform topic triage and write a short, reviewer-safe `committee assignment rationale`.
+4. Generate five private reviewer assignment sheets:
    - reviewers `1-3`: `broad`
    - reviewers `4-5`: `niche`
-4. Prefer isolated agents or fresh sessions for each reviewer and for the AE when the environment supports them.
-5. Run reviewer 1 through reviewer 5 independently.
-6. Run one AE review using the paper package and all five completed reviews.
-7. Emit the final report in this exact order:
+5. Consolidate those private sheets into the AE-safe `Reviewer Assignment Sheet` (author-facing summary of the final assignments, never shown to reviewer voices) before reviewers begin their drafts; in isolated-agent setups the AE-safe sheet can be created right after the private sheets because reviewers never see it, while in fallback mode you must wait until all five reviewer drafts complete and only then materialize the sheet just before the AE stage.
+6. Prefer isolated agents or fresh sessions for each reviewer and for the AE when the environment supports them.
+7. Run reviewer 1 through reviewer 5 independently.
+8. Run one AE review using the paper package, the reviewer-safe committee rationale, the consolidated `Reviewer Assignment Sheet`, and all five completed reviews.
+9. Emit the final report in this exact order:
    - `Paper Theme Summary`
    - `Committee Assignment Rationale`
    - `Reviewer Assignment Sheet`
@@ -30,19 +32,23 @@ Use this skill to simulate a committee-style review before submission. The skill
    - `Reviewer 5 Detailed Review`
    - `AE Meta-Review`
 
+## Paper Theme Summary
+
+The `Paper Theme Summary` should describe the high-level research question, the core domain, key contributions, and why the work matters. Keep this section focused on the paper's story and evidence; defer reviewer-role reasoning, risk balancing, and assignment logic to the `Committee Assignment Rationale` so the two sections stay distinct.
+
 ## Context Separation Contract
 
 Keep these artifacts distinct:
 
 - `reviewer-safe committee rationale`: shared context about topic, parent field, and broad-vs-niche risk split; no reviewer-specific private lenses
 - `private reviewer assignment sheet` (per reviewer): working input for one reviewer only
-- `Reviewer Assignment Sheet` (final report section): one author-facing consolidated summary of all five assignments
+- `Reviewer Assignment Sheet` (final report section): one author-facing, AE-safe consolidated summary of all five assignments that reviewer voices do not see
 
 Visibility rules:
 
 - each reviewer sees only their own private assignment sheet plus the reviewer-safe committee rationale
 - no reviewer sees other reviewers' private assignment sheets
-- the final consolidated `Reviewer Assignment Sheet` is for the user-facing report
+- the final consolidated `Reviewer Assignment Sheet` is for the user-facing report and the AE stage, while remaining hidden from reviewer voices
 
 ## Committee Assignment Rationale Contract
 
@@ -71,6 +77,20 @@ Assignment rules:
 - reviewers `1-3` must be broad-field and non-redundant
 - reviewers `4-5` must be niche-field and tied to the paper's technical core
 - reviewer priorities should be differentiated, not restatements of one another
+
+## Private Reviewer Assignment Sheet Contract
+
+Each private reviewer assignment sheet must define:
+
+- `reviewer id`
+- `reviewer type` (`broad` or `niche`)
+- `area expertise`
+- `primary review lens` that maps directly to a subset of the paper, claims, or risks
+- `critical tasks` (what this reviewer must inspect or validate)
+- `key questions this reviewer will care about`
+- `likely acceptance bar` plus any calibration notes
+
+Keep each private sheet focused on the assigned lens and avoid restating other reviewers' priorities; these sheets feed the consolidated `Reviewer Assignment Sheet` that the AE consults once the reviews finish.
 
 ## Reviewer Output Contract
 
@@ -103,6 +123,8 @@ Scoring contract:
 
 ## AE Output Contract
 
+The AE receives only the paper package, the reviewer-safe committee rationale, the consolidated `Reviewer Assignment Sheet`, and the five completed reviews before drafting any synthesis, so it can check whether each reviewer stuck to their assigned focus.
+
 `AE Meta-Review` must include these subsections in order:
 
 1. `AE Summary`
@@ -122,7 +144,7 @@ AE scoring contract:
 
 ## Independence Rules
 
-Treat independence as a hard requirement.
+Treat independence as a hard requirement when isolated agents or fresh sessions are available; fallback mode is a best-effort emulation that still stages the same sequential reviews while trying not to leak prior content.
 
 - use isolated agents or fresh sessions for reviewers and AE whenever supported
 - each reviewer sees only:
@@ -136,6 +158,7 @@ Treat independence as a hard requirement.
 - AE sees:
   - paper package
   - reviewer-safe committee rationale
+  - the consolidated `Reviewer Assignment Sheet`
   - all five completed reviews
 - AE must not draft reviewer opinions on reviewers' behalf
 
@@ -150,7 +173,8 @@ If isolated agents or fresh sessions are unavailable, run the same staged protoc
 5. reviewer 3 review
 6. reviewer 4 review
 7. reviewer 5 review
-8. AE synthesis
+8. consolidate the private sheets into the AE-safe `Reviewer Assignment Sheet` (do not expose this to reviewer drafts)
+9. AE synthesis
 
 Fallback constraints:
 
@@ -180,10 +204,17 @@ Preferred inputs:
 
 Revision mode uses a **delta/update output**, not a full fresh committee report.
 
+The delta output must include the following sections:
+
+1. `Revision Summary` describing the core paper changes and how they impact the key claims.
+2. `Reviewer Deltas` listing each reviewer, the updated status of their major concerns (`resolved`, `partially resolved`, `unresolved`), and the evidence for the status.
+3. `AE Update` stating whether the overall outcome changed materially, any shifts in calibration/objectivity, and a `Final Recommendation` if it moved.
+4. `Next Steps` (optional) advising the author on targeted follow-up or clarifications.
+
 When the user provides a revised draft:
 
-1. compare the revision against prior major reviewer concerns
-2. mark each concern as `resolved`, `partially resolved`, or `unresolved`
-3. preserve reviewer identity when possible and report per-reviewer deltas
-4. include an AE update stating whether the overall outcome changed materially
-5. only regenerate a full fresh committee report if the paper scope changed substantially
+- compare the revision against prior major reviewer concerns
+- mark each concern as `resolved`, `partially resolved`, or `unresolved`
+- preserve reviewer identity when possible and report per-reviewer deltas
+- include an AE update stating whether the overall outcome changed materially
+- only regenerate a full fresh committee report if the paper scope changed substantially
