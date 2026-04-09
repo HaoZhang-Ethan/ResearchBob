@@ -14,6 +14,7 @@ from auto_research.github_intake import (
     build_fallback_profile_from_issue_intake,
     close_issue,
     comment_on_issue,
+    discover_issue_directions,
     discover_github_repo,
 )
 from auto_research.intake import run_intake
@@ -26,13 +27,14 @@ from auto_research.ris import export_ris
 from auto_research.selection import RankedCandidate, prefilter_candidates
 from auto_research.summary import load_detailed_analysis_texts, write_daily_summary
 from auto_research.state import PaperState, load_paper_state, update_paper_state, utc_now_iso
-from auto_research.workspace import ensure_workspace
+from auto_research.workspace import ensure_direction_workspace, ensure_workspace
 from auto_research.longterm import update_longterm_summary
 
 
 @dataclass(slots=True)
 class PipelineConfig:
     workspace: Path
+    direction: str | None = None
     profile_path: Path | None = None
     max_results: int = 20
     prefilter_limit: int = 15
@@ -352,14 +354,14 @@ def _append_run_history(
     return history_path
 
 
-def _ensure_profile_exists(workspace: Path, profile_path: Path) -> Path:
+def _ensure_profile_exists(workspace: Path, direction: str, profile_path: Path) -> Path:
     if profile_path.exists():
         return profile_path
 
     if profile_path.is_symlink():
         raise OSError(f"Refusing to write symlinked profile file: {profile_path}")
 
-    markdown = build_fallback_profile_from_issue_intake(workspace).markdown
+    markdown = build_fallback_profile_from_issue_intake(workspace, direction).markdown
     errors = validate_interest_profile_text(markdown)
     if errors:
         raise ValueError(
@@ -370,7 +372,12 @@ def _ensure_profile_exists(workspace: Path, profile_path: Path) -> Path:
     return profile_path
 
 
-def _ensure_profile_exists_with_metadata(workspace: Path, profile_path: Path) -> tuple[Path, object | None]:
+def _ensure_profile_exists_with_metadata(
+    workspace: Path,
+    execution_workspace: Path,
+    direction: str,
+    profile_path: Path,
+) -> tuple[Path, object | None]:
     if profile_path.exists():
         return profile_path, None
 
@@ -378,7 +385,7 @@ def _ensure_profile_exists_with_metadata(workspace: Path, profile_path: Path) ->
         raise OSError(f"Refusing to write symlinked profile file: {profile_path}")
 
     repo = discover_github_repo()
-    fallback = build_fallback_profile_from_issue_intake(workspace, repo=repo)
+    fallback = build_fallback_profile_from_issue_intake(workspace, direction, repo=repo)
     errors = validate_interest_profile_text(fallback.markdown)
     if errors:
         raise ValueError(
@@ -387,6 +394,17 @@ def _ensure_profile_exists_with_metadata(workspace: Path, profile_path: Path) ->
     profile_path.parent.mkdir(parents=True, exist_ok=True)
     profile_path.write_text(fallback.markdown, encoding="utf-8")
     return profile_path, fallback
+
+
+def _resolve_run_direction(workspace: Path, requested_direction: str | None) -> str:
+    if requested_direction:
+        return requested_direction
+    directions = discover_issue_directions(workspace)
+    if len(directions) == 1:
+        return directions[0]
+    if not directions:
+        raise ValueError("No usable issue directions found; pass --direction")
+    raise ValueError("Multiple issue directions found; pass --direction")
 
 
 def _github_finalize_state_path(workspace: Path) -> Path:
@@ -478,13 +496,22 @@ def run_daily_pipeline(
     *,
     llm_client: OpenAIResponsesClient | None = None,
 ) -> PipelineResult:
-    workspace = ensure_workspace(config.workspace)
+    shared_workspace = ensure_workspace(config.workspace)
+    direction = _resolve_run_direction(shared_workspace, config.direction)
+    execution_workspace = ensure_direction_workspace(shared_workspace, direction)
     label = config.label or _default_label()
-    profile_path = config.profile_path or workspace / "profile" / "interest-profile.md"
-    profile_path, fallback = _ensure_profile_exists_with_metadata(workspace, profile_path)
+    profile_path = config.profile_path or execution_workspace / "profile" / "interest-profile.md"
+    profile_path, fallback = _ensure_profile_exists_with_metadata(
+        shared_workspace,
+        execution_workspace,
+        direction,
+        profile_path,
+    )
     profile = load_interest_profile(profile_path)
 
-    intake_entries = run_intake(workspace=workspace, profile_path=profile_path, max_results=config.max_results)
+    intake_entries = run_intake(
+        workspace=execution_workspace, profile_path=profile_path, max_results=config.max_results
+    )
     candidates = prefilter_candidates(profile, intake_entries, config.prefilter_limit)
 
     selected_entries: list[RegistryEntry]
@@ -497,25 +524,25 @@ def run_daily_pipeline(
 
         for entry in selected_entries:
             summary_path = _write_summary_if_needed(
-                workspace=workspace,
+                workspace=execution_workspace,
                 profile=profile,
                 entry=entry,
                 client=client,
                 overwrite=config.overwrite_summaries,
             )
-            pdf_path = _download_pdf_if_needed(workspace=workspace, entry=entry)
+            pdf_path = _download_pdf_if_needed(workspace=execution_workspace, entry=entry)
             if pdf_path is not None:
                 _write_detailed_analysis_if_needed(
-                    workspace=workspace,
+                    workspace=execution_workspace,
                     profile=profile,
                     entry=entry,
                     client=client,
                     summary_path=summary_path,
                 )
 
-    report_path = compose_report(workspace=workspace, mode="daily", label=label)
-    analyses = load_detailed_analysis_texts(workspace, selected_entries)
-    failed_items = _failed_items(workspace, selected_entries)
+    report_path = compose_report(workspace=execution_workspace, mode="daily", label=label)
+    analyses = load_detailed_analysis_texts(execution_workspace, selected_entries)
+    failed_items = _failed_items(execution_workspace, selected_entries)
     client_for_summary = llm_client or OpenAIResponsesClient(model=config.model)
     daily_summary_payload = client_for_summary.summarize_daily_findings(
         profile=profile,
@@ -523,12 +550,12 @@ def run_daily_pipeline(
         failed_items=failed_items,
     )
     daily_summary_path = write_daily_summary(
-        path=workspace / "reports" / "daily" / f"{label}-summary.md",
+        path=execution_workspace / "reports" / "daily" / f"{label}-summary.md",
         label=label,
         payload=daily_summary_payload,
     )
     previous_longterm = ""
-    longterm_path = workspace / "reports" / "longterm" / "longterm-summary.md"
+    longterm_path = execution_workspace / "reports" / "longterm" / "longterm-summary.md"
     if longterm_path.exists():
         previous_longterm = longterm_path.read_text(encoding="utf-8")
     generated_longterm = client_for_summary.update_longterm_findings(
@@ -545,14 +572,16 @@ def run_daily_pipeline(
         generated_summary=generated_longterm,
     )
     bundle_path = _write_daily_bundle(
-        workspace=workspace,
+        workspace=execution_workspace,
         label=label,
         selected_entries=selected_entries,
         failed_items=failed_items,
     )
-    ris_path = export_ris(selected_entries, workspace / "exports" / "zotero" / f"{label}.ris")
+    ris_path = export_ris(
+        selected_entries, execution_workspace / "exports" / "zotero" / f"{label}.ris"
+    )
     history_path = _append_run_history(
-        workspace=workspace,
+        workspace=execution_workspace,
         label=label,
         selected_entries=selected_entries,
         failed_items=failed_items,
@@ -564,7 +593,7 @@ def run_daily_pipeline(
     )
 
     _write_github_finalize_state(
-        workspace=workspace,
+        workspace=shared_workspace,
         fallback=fallback,
         label=label,
         report_path=report_path,
@@ -572,7 +601,7 @@ def run_daily_pipeline(
     )
 
     if config.push:
-        _stage_commit_push(workspace, label)
+        _stage_commit_push(shared_workspace, label)
 
     return PipelineResult(
         selected_entries=selected_entries,
