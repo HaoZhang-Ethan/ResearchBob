@@ -18,7 +18,7 @@ from auto_research.registry import (
     RegistryCorruptionError,
     write_registry,
 )
-from auto_research.workspace import ensure_workspace
+from auto_research.workspace import ensure_direction_workspace, ensure_workspace
 
 
 def test_ensure_workspace_creates_phase1_directories(tmp_path) -> None:
@@ -29,6 +29,26 @@ def test_ensure_workspace_creates_phase1_directories(tmp_path) -> None:
     assert (root / "reports" / "daily").is_dir()
     assert (root / "reports" / "manual").is_dir()
     assert (root / "issue-intake").is_dir()
+
+
+def test_ensure_workspace_creates_shared_and_direction_roots(tmp_path) -> None:
+    root = ensure_workspace(tmp_path / "research-workspace")
+
+    assert (root / "issue-intake").is_dir()
+    assert (root / "directions").is_dir()
+
+
+def test_ensure_direction_workspace_creates_direction_local_directories(tmp_path) -> None:
+    root = ensure_direction_workspace(tmp_path / "research-workspace", "llm-agents")
+
+    assert root == tmp_path / "research-workspace" / "directions" / "llm-agents"
+    assert (root / "profile").is_dir()
+    assert (root / "papers").is_dir()
+    assert (root / "reports" / "daily").is_dir()
+    assert (root / "reports" / "manual").is_dir()
+    assert (root / "reports" / "longterm").is_dir()
+    assert (root / "exports" / "zotero").is_dir()
+    assert (root / "pipeline").is_dir()
 
 
 def test_ensure_workspace_rejects_symlinked_root(tmp_path) -> None:

@@ -8,12 +8,24 @@ PHASE1_DIRECTORIES = (
     "reports/daily",
     "reports/manual",
     "issue-intake",
+    "directions",
 )
 
 _ALLOWED_SYMLINK_ANCESTORS = {
     Path("/tmp"),
     Path("/var"),
 }
+
+
+DIRECTION_WORKSPACE_DIRECTORIES = (
+    "profile",
+    "papers",
+    "reports/daily",
+    "reports/manual",
+    "reports/longterm",
+    "exports/zotero",
+    "pipeline",
+)
 
 
 def _refuse_symlinked_ancestor(path: Path) -> None:
@@ -43,3 +55,18 @@ def ensure_workspace(root: Path) -> Path:
             current.mkdir(parents=True, exist_ok=True)
 
     return root
+
+
+def ensure_direction_workspace(root: Path, direction: str) -> Path:
+    workspace = ensure_workspace(root)
+    direction_root = workspace / "directions" / direction
+
+    for relative_path in DIRECTION_WORKSPACE_DIRECTORIES:
+        current = direction_root
+        for part in Path(relative_path).parts:
+            current = current / part
+            if current.is_symlink():
+                raise OSError(f"Refusing to use symlinked workspace directory: {current}")
+            current.mkdir(parents=True, exist_ok=True)
+
+    return direction_root
