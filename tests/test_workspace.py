@@ -63,6 +63,22 @@ def test_ensure_direction_workspace_rejects_symlinked_direction_root(tmp_path) -
         ensure_direction_workspace(workspace_root, "llm-agents")
 
 
+def test_ensure_direction_workspace_rejects_absolute_direction(tmp_path) -> None:
+    workspace_root = tmp_path / "research-workspace"
+    ensure_workspace(workspace_root)
+
+    with pytest.raises(ValueError, match="direction"):
+        ensure_direction_workspace(workspace_root, "/etc/passwd")
+
+
+def test_ensure_direction_workspace_rejects_traversal_direction(tmp_path) -> None:
+    workspace_root = tmp_path / "research-workspace"
+    ensure_workspace(workspace_root)
+
+    with pytest.raises(ValueError, match="direction"):
+        ensure_direction_workspace(workspace_root, "..")
+
+
 def test_ensure_direction_workspace_rejects_dangling_symlinked_direction_root(tmp_path) -> None:
     workspace_root = tmp_path / "research-workspace"
     ensure_workspace(workspace_root)

@@ -17,6 +17,18 @@ _ALLOWED_SYMLINK_ANCESTORS = {
 }
 
 
+def _validate_direction(direction: str) -> None:
+    if not direction:
+        raise ValueError("Invalid direction: empty value")
+
+    path = Path(direction)
+    if path.is_absolute():
+        raise ValueError("Invalid direction: absolute paths are not allowed")
+
+    if len(path.parts) != 1 or path.parts[0] in {".", ".."}:
+        raise ValueError("Invalid direction: must be a single segment")
+
+
 DIRECTION_WORKSPACE_DIRECTORIES = (
     "profile",
     "papers",
@@ -58,6 +70,7 @@ def ensure_workspace(root: Path) -> Path:
 
 
 def ensure_direction_workspace(root: Path, direction: str) -> Path:
+    _validate_direction(direction)
     workspace = ensure_workspace(root)
     direction_root = workspace / "directions" / direction
 
