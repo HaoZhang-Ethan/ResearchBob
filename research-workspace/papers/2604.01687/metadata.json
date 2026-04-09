@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2604.01687v1",
+  "title": "EvoSkills: Self-Evolving Agent Skills via Co-Evolutionary Verification",
+  "summary": "Anthropic proposes the concept of skills for LLM agents to tackle multi-step professional tasks that simple tool invocations cannot address. A tool is a single, self-contained function, whereas a skill is a structured bundle of interdependent multi-file artifacts. Currently, skill generation is not only label-intensive due to manual authoring, but also may suffer from human--machine cognitive misalignment, which can lead to degraded agent performance, as evidenced by evaluations on SkillsBench. Therefore, we aim to enable agents to autonomously generate skills. However, existing self-evolving methods designed for tools cannot be directly applied to skills due to their increased complexity. To address these issues, we propose EvoSkills, a self-evolving skills framework that enables agents to autonomously construct complex, multi-file skill packages. Specifically, EvoSkills couples a Skill Generator that iteratively refines skills with a Surrogate Verifier that co-evolves to provide informative and actionable feedback without access to ground-truth test content. On SkillsBench, EvoSkills achieves the highest pass rate among five baselines on both Claude Code and Codex, and also exhibits strong generalization capabilities to six additional LLMs.",
+  "pdf_url": "https://arxiv.org/pdf/2604.01687v1",
+  "published_at": "2026-04-02T06:43:20Z",
+  "updated_at": "2026-04-02T06:43:20Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}

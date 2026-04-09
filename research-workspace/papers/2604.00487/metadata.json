@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2604.00487v1",
+  "title": "Competition and Cooperation of LLM Agents in Games",
+  "summary": "Large language model (LLM) agents are increasingly deployed in competitive multi-agent settings, raising fundamental questions about whether they converge to equilibria and how their strategic behavior can be characterized. In this paper, we study LLM agent interactions in two standard games: a network resource allocation game and a Cournot competition game. Rather than converging to Nash equilibria, we find that LLM agents tend to cooperate when given multi-round prompts and non-zero-sum context. Chain-of-thought analysis reveals that fairness reasoning is central to this behavior. We propose an analytical framework that captures the dynamics of LLM agent reasoning across rounds and explains these experimental findings.",
+  "pdf_url": "https://arxiv.org/pdf/2604.00487v1",
+  "published_at": "2026-04-01T05:11:44Z",
+  "updated_at": "2026-04-01T05:11:44Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}

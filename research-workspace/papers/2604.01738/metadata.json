@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2604.01738v1",
+  "title": "AeroTherm-GPT: A Verification-Centered LLM Framework for Thermal Protection System Engineering Workflows",
+  "summary": "Integrating Large Language Models (LLMs) into hypersonic thermal protection system (TPS) design is bottlenecked by cascading constraint violations when generating executable simulation artifacts. General-purpose LLMs, treating generation as single-pass text completion, fail to satisfy the sequential, multi-gate constraints inherent in safety-critical engineering workflows. To address this, we propose AeroTherm-GPT, the first TPS-specialized LLM Agent, instantiated through a Constraint-Closed-Loop Generation (CCLG) framework. CCLG organizes TPS artifact generation as an iterative workflow comprising generation, validation, CDG-guided repair, execution, and audit. The Constraint Dependency Graph (CDG) encodes empirical co-resolution structure among constraint categories, directing repair toward upstream fault candidates based on lifecycle ordering priors and empirical co-resolution probabilities. This upstream-priority mechanism resolves multiple downstream violations per action, achieving a Root-Cause Fix Efficiency of 4.16 versus 1.76 for flat-checklist repair. Evaluated on HyTPS-Bench and validated against external benchmarks, AeroTherm-GPT achieves 88.7% End-to-End Success Rate (95% CI: 87.5-89.9), a gain of +12.5 pp over the matched non-CDG ablation baseline, without catastrophic forgetting on scientific reasoning and code generation tasks.",
+  "pdf_url": "https://arxiv.org/pdf/2604.01738v1",
+  "published_at": "2026-04-02T08:01:24Z",
+  "updated_at": "2026-04-02T08:01:24Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}

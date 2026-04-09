@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2604.00722v1",
+  "title": "LangMARL: Natural Language Multi-Agent Reinforcement Learning",
+  "summary": "Large language model (LLM) agents struggle to autonomously evolve coordination strategies in dynamic environments, largely because coarse global outcomes obscure the causal signals needed for local policy refinement. We identify this bottleneck as a multi-agent credit assignment problem, which has long been studied in classical multi-agent reinforcement learning (MARL) but remains underaddressed in LLM-based systems. Building on this observation, we propose LangMARL, a framework that brings credit assignment and policy gradient evolution from cooperative MARL into the language space. LangMARL introduces agent-level language credit assignment, pioneers gradient evolution in language space for policy improvement, and summarizes task-relevant causal relations from replayed trajectories to provide dense feedback and improve convergence under sparse rewards. Extensive experiments across diverse cooperative multi-agent tasks demonstrate improved sample efficiency, interpretability, and strong generalization.",
+  "pdf_url": "https://arxiv.org/pdf/2604.00722v1",
+  "published_at": "2026-04-01T10:32:00Z",
+  "updated_at": "2026-04-01T10:32:00Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}

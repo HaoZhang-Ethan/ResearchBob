@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2604.00392v1",
+  "title": "EvolveTool-Bench: Evaluating the Quality of LLM-Generated Tool Libraries as Software Artifacts",
+  "summary": "Modern LLM agents increasingly create their own tools at runtime -- from Python functions to API clients -- yet existing benchmarks evaluate them almost exclusively by downstream task completion. This is analogous to judging a software engineer only by whether their code runs, ignoring redundancy, regression, and safety. We introduce EvolveTool-Bench, a diagnostic benchmark for LLM-generated tool libraries in software engineering workflows. Across three domains requiring actual tool execution (proprietary data formats, API orchestration, and numerical computation), we define library-level software quality metrics -- reuse, redundancy, composition success, regression stability, and safety -- alongside a per-tool Tool Quality Score measuring correctness, robustness, generality, and code quality. In the first head-to-head comparison of code-level and strategy-level tool evolution (ARISE vs. EvoSkill vs. one-shot baselines, 99 tasks, two models), we show that systems with similar task completion (63-68%) differ by up to 18% in library health, revealing software quality risks invisible to task-only evaluation. Our results highlight that evaluation and governance of LLM-generated tools require treating the evolving tool library as a first-class software artifact, not a black box.",
+  "pdf_url": "https://arxiv.org/pdf/2604.00392v1",
+  "published_at": "2026-04-01T02:21:55Z",
+  "updated_at": "2026-04-01T02:21:55Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}

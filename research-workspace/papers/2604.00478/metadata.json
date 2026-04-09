@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2604.00478v2",
+  "title": "The Silicon Mirror: Dynamic Behavioral Gating for Anti-Sycophancy in LLM Agents",
+  "summary": "Large Language Models (LLMs) increasingly prioritize user validation over epistemic accuracy - a phenomenon known as sycophancy. We present The Silicon Mirror, an orchestration framework that dynamically detects user persuasion tactics and adjusts AI behavior to maintain factual integrity. Our architecture introduces three components: (1) a Behavioral Access Control (BAC) system that restricts context layer access based on real-time sycophancy risk scores, (2) a Trait Classifier that identifies persuasion tactics across multi-turn dialogues, and (3) a Generator-Critic loop where an auditor vetoes sycophantic drafts and triggers rewrites with \"Necessary Friction.\" In a live evaluation across all 437 TruthfulQA adversarial scenarios, Claude Sonnet 4 exhibits 9.6% baseline sycophancy, reduced to 1.4% by the Silicon Mirror - an 85.7% relative reduction (p < 10^-6, OR = 7.64, Fisher's exact test). Cross-model evaluation on Gemini 2.5 Flash reveals a 46.0% baseline reduced to 14.2% (p < 10^-10, OR = 5.15). We characterize the validation-before-correction pattern as a distinct failure mode of RLHF-trained models.",
+  "pdf_url": "https://arxiv.org/pdf/2604.00478v2",
+  "published_at": "2026-04-01T04:51:28Z",
+  "updated_at": "2026-04-02T15:56:04Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}
