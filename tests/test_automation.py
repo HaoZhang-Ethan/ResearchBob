@@ -1184,6 +1184,57 @@ def test_finalize_github_rejects_symlinked_direction_root(tmp_path, monkeypatch)
     assert calls == []
 
 
+def test_finalize_github_rejects_symlinked_pipeline_dir(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    direction_root = workspace / "directions" / "llm-agents"
+    direction_root.mkdir(parents=True, exist_ok=True)
+
+    target = tmp_path / "pipeline-target"
+    (target / "pipeline").mkdir(parents=True, exist_ok=True)
+    (target / "pipeline" / "github-finalize.json").write_text(
+        """{
+  "direction": "llm-agents",
+  "label": "2026-04-09",
+  "repo": "example/research",
+  "report_path": "/tmp/report.md",
+  "daily_summary_path": "/tmp/summary.md",
+  "used_fallback_profile": true,
+  "consumed_issue_numbers": [12],
+  "source_keys": ["llm-agents/alice"],
+  "status": "pending",
+  "created_at": "2026-04-09T00:00:00Z",
+  "finalized_at": ""
+}
+""",
+        encoding="utf-8",
+    )
+
+    pipeline_dir = direction_root / "pipeline"
+    pipeline_dir.symlink_to(target / "pipeline", target_is_directory=True)
+    assert pipeline_dir.is_symlink()
+
+    calls: list[tuple[str, object]] = []
+    monkeypatch.setattr(
+        "auto_research.automation.subprocess.run",
+        lambda cmd, cwd, check, **kwargs: calls.append(("push", cmd)) or None,
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.comment_on_issue",
+        lambda *, repo, issue_number, body: calls.append(("comment", repo, issue_number)),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.close_issue",
+        lambda *, repo, issue_number: calls.append(("close", repo, issue_number)),
+    )
+
+    with pytest.raises(OSError, match="symlink"):
+        finalize_github(workspace, direction="llm-agents")
+
+    assert calls == []
+
+
 def test_finalize_github_skips_completed_state(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
     ensure_direction_workspace(workspace, "llm-agents")

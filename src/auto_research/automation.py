@@ -549,7 +549,12 @@ def finalize_github(workspace: Path, direction: str | None = None) -> dict[str, 
     execution_workspace = shared_workspace / "directions" / resolved_direction
     if execution_workspace.is_symlink():
         raise OSError(f"Refusing to use symlinked workspace directory: {execution_workspace}")
+    pipeline_dir = execution_workspace / "pipeline"
+    if pipeline_dir.is_symlink():
+        raise OSError(f"Refusing to use symlinked workspace directory: {pipeline_dir}")
     state_path = _github_finalize_state_path(execution_workspace)
+    if state_path.is_symlink():
+        raise OSError(f"Refusing to read symlinked finalize state file: {state_path}")
     if not state_path.exists():
         raise ValueError("No pending GitHub finalize work found")
 
