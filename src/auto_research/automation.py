@@ -262,7 +262,18 @@ def _write_detailed_analysis_if_needed(
 
 
 def _stage_commit_push(workspace: Path, label: str) -> None:
-    repo_root = workspace.parent if workspace.name == "research-workspace" else Path.cwd()
+    repo_root: Path | None = None
+    if workspace.name == "research-workspace":
+        repo_root = workspace.parent
+    else:
+        # When staging a direction workspace (e.g. research-workspace/directions/<dir>),
+        # keep using the repository root that contains the shared workspace.
+        for parent in workspace.parents:
+            if parent.name == "research-workspace":
+                repo_root = parent.parent
+                break
+    if repo_root is None:
+        repo_root = Path.cwd()
     subprocess.run(["git", "add", "-f", str(workspace)], cwd=repo_root, check=True)
     status = subprocess.run(
         ["git", "diff", "--cached", "--quiet"],
@@ -396,15 +407,58 @@ def _ensure_profile_exists_with_metadata(
     return profile_path, fallback
 
 
-def _resolve_run_direction(workspace: Path, requested_direction: str | None) -> str:
+def _infer_direction_from_profile_path(workspace: Path, profile_path: Path | None) -> str | None:
+    if profile_path is None:
+        return None
+    candidate = profile_path
+    if not candidate.is_absolute():
+        candidate = workspace / candidate
+    try:
+        relative = candidate.relative_to(workspace)
+    except ValueError:
+        return None
+    parts = relative.parts
+    if len(parts) == 4 and parts[0] == "directions" and parts[2] == "profile" and parts[3] == "interest-profile.md":
+        return parts[1]
+    return None
+
+
+def _discover_direction_profiles(workspace: Path) -> list[str]:
+    directions_root = workspace / "directions"
+    if not directions_root.exists():
+        return []
+    directions: list[str] = []
+    for direction_dir in sorted(path for path in directions_root.iterdir() if path.is_dir()):
+        if (direction_dir / "profile" / "interest-profile.md").exists():
+            directions.append(direction_dir.name)
+    return directions
+
+
+def _resolve_run_direction(
+    workspace: Path,
+    requested_direction: str | None,
+    profile_path: Path | None,
+) -> str:
     if requested_direction:
         return requested_direction
+
+    inferred = _infer_direction_from_profile_path(workspace, profile_path)
+    if inferred:
+        return inferred
+
     directions = discover_issue_directions(workspace)
     if len(directions) == 1:
         return directions[0]
-    if not directions:
-        raise ValueError("No usable issue directions found; pass --direction")
-    raise ValueError("Multiple issue directions found; pass --direction")
+    if len(directions) > 1:
+        raise ValueError("Multiple issue directions found; pass --direction")
+
+    profile_directions = _discover_direction_profiles(workspace)
+    if len(profile_directions) == 1:
+        return profile_directions[0]
+    if len(profile_directions) > 1:
+        raise ValueError("Multiple direction workspaces found; pass --direction")
+
+    raise ValueError("No usable issue directions found; pass --direction")
 
 
 def _github_finalize_state_path(workspace: Path) -> Path:
@@ -497,7 +551,7 @@ def run_daily_pipeline(
     llm_client: OpenAIResponsesClient | None = None,
 ) -> PipelineResult:
     shared_workspace = ensure_workspace(config.workspace)
-    direction = _resolve_run_direction(shared_workspace, config.direction)
+    direction = _resolve_run_direction(shared_workspace, config.direction, config.profile_path)
     execution_workspace = ensure_direction_workspace(shared_workspace, direction)
     label = config.label or _default_label()
     profile_path = config.profile_path or execution_workspace / "profile" / "interest-profile.md"
@@ -601,7 +655,7 @@ def run_daily_pipeline(
     )
 
     if config.push:
-        _stage_commit_push(shared_workspace, label)
+        _stage_commit_push(execution_workspace, label)
 
     return PipelineResult(
         selected_entries=selected_entries,
