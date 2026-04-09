@@ -487,13 +487,13 @@ def _resolve_run_direction(
     raise ValueError("No usable issue directions found; pass --direction")
 
 
-def _github_finalize_state_path(workspace: Path) -> Path:
-    return workspace / "pipeline" / "github-finalize.json"
+def _github_finalize_state_path(execution_workspace: Path) -> Path:
+    return execution_workspace / "pipeline" / "github-finalize.json"
 
 
 def _write_github_finalize_state(
     *,
-    workspace: Path,
+    execution_workspace: Path,
     fallback,
     label: str,
     report_path: Path,
@@ -502,11 +502,13 @@ def _write_github_finalize_state(
     if fallback is None or not getattr(fallback, "issue_numbers", None) or not getattr(fallback, "repo", None):
         return None
 
-    state_path = _github_finalize_state_path(workspace)
+    direction = getattr(fallback, "direction", "") or ""
+    state_path = _github_finalize_state_path(execution_workspace)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
         json.dumps(
             {
+                "direction": direction,
                 "label": label,
                 "repo": fallback.repo,
                 "report_path": str(report_path),
@@ -527,8 +529,11 @@ def _write_github_finalize_state(
     return state_path
 
 
-def finalize_github(workspace: Path) -> dict[str, object]:
-    state_path = _github_finalize_state_path(workspace)
+def finalize_github(workspace: Path, direction: str | None = None) -> dict[str, object]:
+    shared_workspace = ensure_workspace(workspace)
+    resolved_direction = _resolve_run_direction(shared_workspace, direction, None)
+    execution_workspace = ensure_direction_workspace(shared_workspace, resolved_direction)
+    state_path = _github_finalize_state_path(execution_workspace)
     if not state_path.exists():
         raise ValueError("No pending GitHub finalize work found")
 
@@ -536,7 +541,7 @@ def finalize_github(workspace: Path) -> dict[str, object]:
     if state.get("status") == "completed":
         return state
 
-    repo_root = workspace.parent if workspace.name == "research-workspace" else Path.cwd()
+    repo_root = shared_workspace.parent if shared_workspace.name == "research-workspace" else Path.cwd()
     subprocess.run(["git", "push"], cwd=repo_root, check=True)
 
     repo = str(state["repo"])
@@ -673,7 +678,7 @@ def run_daily_pipeline(
     )
 
     _write_github_finalize_state(
-        workspace=shared_workspace,
+        execution_workspace=execution_workspace,
         fallback=fallback,
         label=label,
         report_path=report_path,
