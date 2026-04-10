@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 from subprocess import run
 
 from auto_research.cli import main as cli_main
@@ -66,7 +67,11 @@ def test_build_parser_includes_sync_issues_command() -> None:
 def test_finalize_github_cli_runs(monkeypatch, capsys, tmp_path) -> None:
     monkeypatch.setattr(
         "auto_research.cli.finalize_github",
-        lambda workspace: {"status": "completed", "label": "2026-04-04", "consumed_issue_numbers": [12]},
+        lambda workspace, direction=None: {
+            "status": "completed",
+            "label": "2026-04-04",
+            "consumed_issue_numbers": [12],
+        },
     )
 
     exit_code = cli_main(["finalize-github", "--workspace", str(tmp_path / "research-workspace")])
@@ -88,3 +93,213 @@ def test_build_parser_includes_finalize_github_command() -> None:
 
     assert result.returncode == 0
     assert "finalize-github" in result.stdout
+
+
+def test_daily_pipeline_cli_passes_direction(monkeypatch, capsys, tmp_path) -> None:
+    captured = {}
+
+    def fake_run_daily_pipeline(config):
+        captured["direction"] = config.direction
+        return type("Result", (), {"report_path": tmp_path / "report.md", "ris_path": tmp_path / "out.ris"})()
+
+    monkeypatch.setattr("auto_research.cli.run_daily_pipeline", fake_run_daily_pipeline)
+
+    exit_code = cli_main(
+        ["daily-pipeline", "--workspace", str(tmp_path / "research-workspace"), "--direction", "llm-agents"]
+    )
+
+    assert exit_code == 0
+    assert captured["direction"] == "llm-agents"
+
+
+def test_daily_pipeline_cli_canonicalizes_direction_label(monkeypatch, capsys, tmp_path) -> None:
+    captured = {}
+
+    def fake_run_daily_pipeline(config):
+        captured["direction"] = config.direction
+        return type("Result", (), {"report_path": tmp_path / "report.md", "ris_path": tmp_path / "out.ris"})()
+
+    monkeypatch.setattr("auto_research.cli.run_daily_pipeline", fake_run_daily_pipeline)
+
+    exit_code = cli_main(
+        ["daily-pipeline", "--workspace", str(tmp_path / "research-workspace"), "--direction", "LLM Agents"]
+    )
+
+    assert exit_code == 0
+    assert captured["direction"] == "llm-agents"
+
+
+def test_finalize_github_cli_passes_direction(monkeypatch, capsys, tmp_path) -> None:
+    captured = {}
+
+    def fake_finalize_github(workspace, direction=None):
+        captured["direction"] = direction
+        return {"status": "completed", "label": "2026-04-09", "consumed_issue_numbers": [12]}
+
+    monkeypatch.setattr("auto_research.cli.finalize_github", fake_finalize_github)
+
+    exit_code = cli_main(
+        ["finalize-github", "--workspace", str(tmp_path / "research-workspace"), "--direction", "llm-agents"]
+    )
+
+    assert exit_code == 0
+    assert captured["direction"] == "llm-agents"
+
+
+def test_finalize_github_cli_canonicalizes_direction_label(monkeypatch, capsys, tmp_path) -> None:
+    captured = {}
+
+    def fake_finalize_github(workspace, direction=None):
+        captured["direction"] = direction
+        return {"status": "completed", "label": "2026-04-09", "consumed_issue_numbers": [12]}
+
+    monkeypatch.setattr("auto_research.cli.finalize_github", fake_finalize_github)
+
+    exit_code = cli_main(
+        ["finalize-github", "--workspace", str(tmp_path / "research-workspace"), "--direction", "LLM Agents"]
+    )
+
+    assert exit_code == 0
+    assert captured["direction"] == "llm-agents"
+
+
+def test_compose_report_cli_passes_direction_workspace(monkeypatch, capsys, tmp_path) -> None:
+    captured = {}
+
+    def fake_compose_report(*, workspace: Path, mode: str, label: str):
+        captured["workspace"] = workspace
+        captured["mode"] = mode
+        captured["label"] = label
+        return tmp_path / "report.md"
+
+    monkeypatch.setattr("auto_research.cli.compose_report", fake_compose_report)
+
+    workspace_root = tmp_path / "research-workspace"
+    exit_code = cli_main(
+        [
+            "compose-report",
+            "--workspace",
+            str(workspace_root),
+            "--direction",
+            "llm-agents",
+            "--label",
+            "2026-04-09",
+        ]
+    )
+    captured_io = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured["workspace"] == workspace_root / "directions" / "llm-agents"
+    assert "report.md" in captured_io.out
+
+
+def test_compose_report_cli_canonicalizes_direction_label(monkeypatch, capsys, tmp_path) -> None:
+    captured = {}
+
+    def fake_compose_report(*, workspace: Path, mode: str, label: str):
+        captured["workspace"] = workspace
+        captured["mode"] = mode
+        captured["label"] = label
+        return tmp_path / "report.md"
+
+    monkeypatch.setattr("auto_research.cli.compose_report", fake_compose_report)
+
+    workspace_root = tmp_path / "research-workspace"
+    exit_code = cli_main(
+        [
+            "compose-report",
+            "--workspace",
+            str(workspace_root),
+            "--direction",
+            "LLM Agents",
+            "--label",
+            "2026-04-09",
+        ]
+    )
+    captured_io = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured["workspace"] == workspace_root / "directions" / "llm-agents"
+    assert "report.md" in captured_io.out
+
+
+def test_compose_report_cli_rejects_traversal_direction(monkeypatch, capsys, tmp_path) -> None:
+    captured = {"called": False}
+
+    def fake_compose_report(*, workspace: Path, mode: str, label: str):
+        captured["called"] = True
+        return tmp_path / "report.md"
+
+    monkeypatch.setattr("auto_research.cli.compose_report", fake_compose_report)
+
+    exit_code = cli_main(
+        [
+            "compose-report",
+            "--workspace",
+            str(tmp_path / "research-workspace"),
+            "--direction",
+            "../escaped",
+            "--label",
+            "2026-04-09",
+        ]
+    )
+    captured_io = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured["called"] is False
+    assert "Invalid --direction" in captured_io.err
+
+
+def test_compose_report_cli_rejects_absolute_direction(monkeypatch, capsys, tmp_path) -> None:
+    captured = {"called": False}
+
+    def fake_compose_report(*, workspace: Path, mode: str, label: str):
+        captured["called"] = True
+        return tmp_path / "report.md"
+
+    monkeypatch.setattr("auto_research.cli.compose_report", fake_compose_report)
+
+    exit_code = cli_main(
+        [
+            "compose-report",
+            "--workspace",
+            str(tmp_path / "research-workspace"),
+            "--direction",
+            "/etc/passwd",
+            "--label",
+            "2026-04-09",
+        ]
+    )
+    captured_io = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured["called"] is False
+    assert "Invalid --direction" in captured_io.err
+
+
+def test_compose_report_cli_direction_initializes_shared_root_without_nested_dirs(capsys, tmp_path) -> None:
+    workspace_root = tmp_path / "research-workspace"
+
+    exit_code = cli_main(
+        [
+            "compose-report",
+            "--workspace",
+            str(workspace_root),
+            "--direction",
+            "llm-agents",
+            "--label",
+            "2026-04-09",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    direction_root = workspace_root / "directions" / "llm-agents"
+    report_path = direction_root / "reports" / "daily" / "2026-04-09.md"
+
+    assert exit_code == 0
+    assert str(report_path) in captured.out
+    assert (workspace_root / "issue-intake").is_dir()
+    assert (workspace_root / "directions").is_dir()
+    assert report_path.exists()
+    assert not (direction_root / "issue-intake").exists()
+    assert not (direction_root / "directions").exists()

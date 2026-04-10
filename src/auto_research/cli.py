@@ -11,12 +11,12 @@ import httpx
 
 from auto_research.env import load_env_file
 from auto_research.extraction import validate_extraction_document
-from auto_research.github_intake import IssueSyncConfig, sync_issues
+from auto_research.github_intake import IssueSyncConfig, canonicalize_direction_slug, sync_issues
 from auto_research.intake import IntakeDataError, IntakeProfileError, run_intake
 from auto_research.profile import validate_interest_profile_text
 from auto_research.registry import RegistryCorruptionError
 from auto_research.report import compose_report
-from auto_research.workspace import ensure_workspace
+from auto_research.workspace import ensure_direction_workspace, ensure_workspace
 from auto_research.automation import PipelineConfig, finalize_github, run_daily_pipeline
 
 
@@ -26,6 +26,13 @@ def _raw_argv(argv: Sequence[str] | None) -> list[str]:
 
 def _profile_path_was_overridden(argv: Sequence[str]) -> bool:
     return any(argument == "--profile" or argument.startswith("--profile=") for argument in argv)
+
+
+def _canonicalize_direction_argument(direction: str) -> str:
+    try:
+        return canonicalize_direction_slug(direction)
+    except ValueError as exc:
+        raise ValueError(f"Invalid --direction: {exc}") from exc
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -51,11 +58,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     compose = subparsers.add_parser("compose-report")
     compose.add_argument("--workspace", default="research-workspace")
+    compose.add_argument("--direction")
     compose.add_argument("--mode", choices=("daily", "manual"), default="daily")
     compose.add_argument("--label", required=True)
 
     pipeline = subparsers.add_parser("daily-pipeline")
     pipeline.add_argument("--workspace", default="research-workspace")
+    pipeline.add_argument("--direction")
     pipeline.add_argument("--profile", default="research-workspace/profile/interest-profile.md")
     pipeline.add_argument("--max-results", type=int, default=20)
     pipeline.add_argument("--prefilter-limit", type=int, default=15)
@@ -74,6 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     finalize_parser = subparsers.add_parser("finalize-github")
     finalize_parser.add_argument("--workspace", default="research-workspace")
+    finalize_parser.add_argument("--direction")
 
     return parser
 
@@ -197,8 +207,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "compose-report":
         try:
+            workspace = Path(args.workspace)
+            if args.direction is not None:
+                direction = _canonicalize_direction_argument(args.direction)
+                workspace = ensure_direction_workspace(workspace, direction)
             report_path = compose_report(
-                workspace=Path(args.workspace),
+                workspace=workspace,
                 mode=args.mode,
                 label=args.label,
             )
@@ -213,9 +227,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "daily-pipeline":
         try:
+            direction = None
+            if args.direction is not None:
+                direction = _canonicalize_direction_argument(args.direction)
             result = run_daily_pipeline(
                 PipelineConfig(
                     workspace=Path(args.workspace),
+                    direction=direction,
                     profile_path=(
                         Path(args.profile)
                         if _profile_path_was_overridden(raw_argv)
@@ -269,7 +287,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "finalize-github":
         try:
-            result = finalize_github(Path(args.workspace))
+            direction = None
+            if args.direction is not None:
+                direction = _canonicalize_direction_argument(args.direction)
+            result = finalize_github(Path(args.workspace), direction=direction)
         except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
             print(f"GitHub finalize failed: {exc}", file=sys.stderr)
             return 1

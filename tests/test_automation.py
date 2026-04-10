@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from auto_research.automation import PipelineConfig, finalize_github, run_daily_pipeline
 from auto_research.models import RegistryEntry
 from auto_research.openai_client import OpenAIResponsesClient, SummaryArtifact
-from auto_research.workspace import ensure_workspace
+from auto_research.workspace import ensure_direction_workspace, ensure_workspace
 
 
 class FakeLLMClient:
@@ -68,10 +70,488 @@ def test_openai_client_uses_env_base_url(monkeypatch) -> None:
     assert client._base_url == "http://example.test:8080/responses"
 
 
+def test_run_daily_pipeline_writes_outputs_under_direction_workspace(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    direction_root = workspace / "directions" / "llm-agents"
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    result = run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-09",
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    assert result.report_path == direction_root / "reports" / "daily" / "2026-04-09.md"
+    assert result.ris_path == direction_root / "exports" / "zotero" / "2026-04-09.ris"
+    assert result.history_path == direction_root / "pipeline" / "run-history.jsonl"
+
+    # Regression: pipeline helpers may call ensure_workspace(execution_workspace). That must
+    # not create nested shared-workspace roots inside the direction workspace.
+    assert not (direction_root / "issue-intake").exists()
+    assert not (direction_root / "directions").exists()
+
+
+def test_run_daily_pipeline_canonicalizes_direction_label(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    direction_root = workspace / "directions" / "llm-agents"
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    result = run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="LLM Agents",
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-09",
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    assert result.report_path == direction_root / "reports" / "daily" / "2026-04-09.md"
+    assert not (workspace / "directions" / "LLM Agents").exists()
+
+
+def test_run_daily_pipeline_infers_direction_from_single_direction_profile(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    direction_root = workspace / "directions" / "llm-agents"
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    result = run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-09",
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    assert result.report_path == direction_root / "reports" / "daily" / "2026-04-09.md"
+    assert result.ris_path == direction_root / "exports" / "zotero" / "2026-04-09.ris"
+    assert result.history_path == direction_root / "pipeline" / "run-history.jsonl"
+
+
+def test_run_daily_pipeline_infers_direction_from_profile_path(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    direction_root = workspace / "directions" / "llm-agents"
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+    other_profile = workspace / "directions" / "robotics" / "profile" / "interest-profile.md"
+    other_profile.parent.mkdir(parents=True, exist_ok=True)
+    other_profile.write_text(profile_path.read_text(encoding="utf-8"), encoding="utf-8")
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    result = run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            profile_path=profile_path,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-09",
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    assert result.report_path == direction_root / "reports" / "daily" / "2026-04-09.md"
+
+
+def test_run_daily_pipeline_infers_direction_from_cli_relative_profile_path(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    direction_root = workspace / "directions" / "llm-agents"
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+    other_profile = workspace / "directions" / "robotics" / "profile" / "interest-profile.md"
+    other_profile.parent.mkdir(parents=True, exist_ok=True)
+    other_profile.write_text(profile_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    # CLI invocations often pass paths like `research-workspace/directions/<dir>/profile/interest-profile.md`.
+    cli_style_path = Path("research-workspace/directions/llm-agents/profile/interest-profile.md")
+    result = run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            profile_path=cli_style_path,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-09",
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    assert result.report_path == direction_root / "reports" / "daily" / "2026-04-09.md"
+
+
+def test_run_daily_pipeline_push_stages_direction_workspace(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    direction = "llm-agents"
+    direction_root = workspace / "directions" / direction
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+
+    staged: list[Path] = []
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [])
+    monkeypatch.setattr("auto_research.automation._stage_commit_push", lambda w, l: staged.append(w))
+
+    run_daily_pipeline(
+        PipelineConfig(workspace=workspace, direction=direction, label="2026-04-09", push=True),
+        llm_client=FakeLLMClient(),
+    )
+
+    assert staged == [direction_root]
+
+
+def test_run_daily_pipeline_requires_direction_when_multiple_issue_directions_exist(tmp_path) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    (workspace / "issue-intake" / "llm-agents" / "alice").mkdir(parents=True, exist_ok=True)
+    (workspace / "issue-intake" / "llm-agents" / "alice" / "summary.md").write_text(
+        "# Issue Intake Summary\n", encoding="utf-8"
+    )
+    (workspace / "issue-intake" / "robotics" / "bob").mkdir(parents=True, exist_ok=True)
+    (workspace / "issue-intake" / "robotics" / "bob" / "summary.md").write_text(
+        "# Issue Intake Summary\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="--direction"):
+        run_daily_pipeline(PipelineConfig(workspace=workspace, label="2026-04-09"), llm_client=FakeLLMClient())
+
+
 def test_run_daily_pipeline_writes_report_and_ris(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
-    (workspace / "profile").mkdir(parents=True, exist_ok=True)
-    (workspace / "profile" / "interest-profile.md").write_text(
+    ensure_workspace(workspace)
+    direction = "npu-compiler"
+    direction_root = workspace / "directions" / direction
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
         """# Research Interest Profile
 
 ## Core Interests
@@ -133,6 +613,7 @@ def test_run_daily_pipeline_writes_report_and_ris(tmp_path, monkeypatch) -> None
     result = run_daily_pipeline(
         PipelineConfig(
             workspace=workspace,
+            direction=direction,
             top_k=1,
             prefilter_limit=5,
             max_results=5,
@@ -142,18 +623,18 @@ def test_run_daily_pipeline_writes_report_and_ris(tmp_path, monkeypatch) -> None
         llm_client=FakeLLMClient(),
     )
 
-    artifact_path = workspace / "papers" / "2603.23566" / "problem-solution.md"
-    detailed_path = workspace / "papers" / "2603.23566" / "detailed-analysis.md"
-    state_path = workspace / "papers" / "2603.23566" / "state.json"
+    artifact_path = direction_root / "papers" / "2603.23566" / "problem-solution.md"
+    detailed_path = direction_root / "papers" / "2603.23566" / "detailed-analysis.md"
+    state_path = direction_root / "papers" / "2603.23566" / "state.json"
     assert artifact_path.exists()
     assert detailed_path.exists()
     assert state_path.exists()
-    assert result.report_path == workspace / "reports" / "daily" / "2026-04-02.md"
-    assert result.daily_summary_path == workspace / "reports" / "daily" / "2026-04-02-summary.md"
-    assert result.bundle_path == workspace / "reports" / "daily" / "2026-04-02-bundle.json"
-    assert result.longterm_summary_path == workspace / "reports" / "longterm" / "longterm-summary.md"
-    assert result.ris_path == workspace / "exports" / "zotero" / "2026-04-02.ris"
-    assert result.history_path == workspace / "pipeline" / "run-history.jsonl"
+    assert result.report_path == direction_root / "reports" / "daily" / "2026-04-02.md"
+    assert result.daily_summary_path == direction_root / "reports" / "daily" / "2026-04-02-summary.md"
+    assert result.bundle_path == direction_root / "reports" / "daily" / "2026-04-02-bundle.json"
+    assert result.longterm_summary_path == direction_root / "reports" / "longterm" / "longterm-summary.md"
+    assert result.ris_path == direction_root / "exports" / "zotero" / "2026-04-02.ris"
+    assert result.history_path == direction_root / "pipeline" / "run-history.jsonl"
     ris_text = result.ris_path.read_text(encoding="utf-8")
     assert "TY  - UNPB" in ris_text
     assert "AscendOptimizer" in ris_text
@@ -169,10 +650,13 @@ def test_run_daily_pipeline_writes_report_and_ris(tmp_path, monkeypatch) -> None
 
 def test_run_daily_pipeline_respects_existing_summary(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
-    stable_dir = workspace / "papers" / "2603.23566"
+    ensure_workspace(workspace)
+    direction = "npu-compiler"
+    stable_dir = workspace / "directions" / direction / "papers" / "2603.23566"
     stable_dir.mkdir(parents=True, exist_ok=True)
-    (workspace / "profile").mkdir(parents=True, exist_ok=True)
-    (workspace / "profile" / "interest-profile.md").write_text(
+    profile_path = workspace / "directions" / direction / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
         """# Research Interest Profile
 
 ## Core Interests
@@ -252,6 +736,7 @@ Existing
     result = run_daily_pipeline(
         PipelineConfig(
             workspace=workspace,
+            direction=direction,
             top_k=1,
             prefilter_limit=5,
             max_results=5,
@@ -265,6 +750,7 @@ Existing
 def test_run_daily_pipeline_generates_profile_from_issue_intake(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
     ensure_workspace(workspace)
+    direction_root = workspace / "directions" / "llm-agents"
     summary_dir = workspace / "issue-intake" / "llm-agents" / "alice"
     (summary_dir / "requests").mkdir(parents=True, exist_ok=True)
     (summary_dir / "summary.md").write_text(
@@ -337,9 +823,88 @@ def test_run_daily_pipeline_generates_profile_from_issue_intake(tmp_path, monkey
         llm_client=FakeLLMClient(),
     )
 
-    profile_path = workspace / "profile" / "interest-profile.md"
+    profile_path = direction_root / "profile" / "interest-profile.md"
     assert profile_path.exists()
     assert "Auto-generated from GitHub issue intake" in profile_path.read_text(encoding="utf-8")
+
+
+def test_run_daily_pipeline_generates_profile_from_requested_direction_issue_intake(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    request_dir = workspace / "issue-intake" / "llm-agents" / "alice" / "requests"
+    request_dir.mkdir(parents=True, exist_ok=True)
+    (request_dir.parent / "summary.md").write_text(
+        """# Issue Intake Summary: llm-agents / alice
+
+- Direction: `llm-agents`
+- GitHub Username: `alice`
+- Request Count: 1
+
+## Active Issues
+- #12: Track multi-agent papers (OPEN)
+
+## Requirements
+- prefer strong system design
+""",
+        encoding="utf-8",
+    )
+    (workspace / "issue-intake" / "robotics" / "bob" / "requests").mkdir(parents=True, exist_ok=True)
+    ((workspace / "issue-intake" / "robotics" / "bob") / "summary.md").write_text(
+        """# Issue Intake Summary: robotics / bob
+
+- Direction: `robotics`
+- GitHub Username: `bob`
+- Request Count: 1
+
+## Active Issues
+- #34: Track robot grasping papers (OPEN)
+""",
+        encoding="utf-8",
+    )
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    run_daily_pipeline(
+        PipelineConfig(workspace=workspace, direction="llm-agents", top_k=1, prefilter_limit=5, max_results=5, label="2026-04-09"),
+        llm_client=FakeLLMClient(),
+    )
+
+    profile_path = workspace / "directions" / "llm-agents" / "profile" / "interest-profile.md"
+    assert profile_path.exists()
+    assert "llm-agents / alice" in profile_path.read_text(encoding="utf-8")
+    assert "robotics / bob" not in profile_path.read_text(encoding="utf-8")
 
 
 def test_run_daily_pipeline_writes_pending_finalize_state(tmp_path, monkeypatch) -> None:
@@ -424,14 +989,16 @@ url: "https://github.com/example/research/issues/12"
         llm_client=FakeLLMClient(),
     )
 
-    finalize_path = workspace / "pipeline" / "github-finalize.json"
+    finalize_path = workspace / "directions" / "llm-agents" / "pipeline" / "github-finalize.json"
     assert finalize_path.exists()
 
 
 def test_run_daily_pipeline_without_fallback_skips_finalize_state(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
     ensure_workspace(workspace)
-    profile_path = workspace / "profile" / "interest-profile.md"
+    direction = "llm-agents"
+    profile_path = workspace / "directions" / direction / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
     profile_path.write_text(
         """# Research Interest Profile
 
@@ -493,6 +1060,7 @@ def test_run_daily_pipeline_without_fallback_skips_finalize_state(tmp_path, monk
     run_daily_pipeline(
         PipelineConfig(
             workspace=workspace,
+            direction=direction,
             top_k=1,
             prefilter_limit=5,
             max_results=5,
@@ -502,14 +1070,13 @@ def test_run_daily_pipeline_without_fallback_skips_finalize_state(tmp_path, monk
         llm_client=FakeLLMClient(),
     )
 
-    assert not (workspace / "pipeline" / "github-finalize.json").exists()
+    assert not (workspace / "directions" / direction / "pipeline" / "github-finalize.json").exists()
 
 
 def test_finalize_github_runs_push_then_issue_updates(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
-    ensure_workspace(workspace)
-    state_path = workspace / "pipeline" / "github-finalize.json"
-    state_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_direction_workspace(workspace, "llm-agents")
+    state_path = workspace / "directions" / "llm-agents" / "pipeline" / "github-finalize.json"
     state_path.write_text(
         """{
   "label": "2026-04-04",
@@ -541,11 +1108,46 @@ def test_finalize_github_runs_push_then_issue_updates(tmp_path, monkeypatch) -> 
         lambda *, repo, issue_number: calls.append(("close", repo, issue_number)),
     )
 
-    result = finalize_github(workspace)
+    result = finalize_github(workspace, direction="llm-agents")
 
     assert result["status"] == "completed"
     assert calls[0] == ("push", ["git", "push"])
     assert calls[1][0] == "comment"
+    assert calls[2] == ("close", "example/research", 12)
+
+
+def test_finalize_github_reads_direction_local_state(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_direction_workspace(workspace, "llm-agents")
+    state_path = workspace / "directions" / "llm-agents" / "pipeline" / "github-finalize.json"
+    state_path.write_text(
+        """{
+  "direction": "llm-agents",
+  "label": "2026-04-09",
+  "repo": "example/research",
+  "report_path": "/tmp/report.md",
+  "daily_summary_path": "/tmp/summary.md",
+  "used_fallback_profile": true,
+  "consumed_issue_numbers": [12],
+  "source_keys": ["llm-agents/alice"],
+  "status": "pending",
+  "created_at": "2026-04-09T00:00:00Z",
+  "finalized_at": ""
+}
+""",
+        encoding="utf-8",
+    )
+    calls = []
+
+    monkeypatch.setattr("auto_research.automation.subprocess.run", lambda cmd, cwd, check: calls.append(("push", cmd)) or None)
+    monkeypatch.setattr("auto_research.automation.comment_on_issue", lambda *, repo, issue_number, body: calls.append(("comment", repo, issue_number)))
+    monkeypatch.setattr("auto_research.automation.close_issue", lambda *, repo, issue_number: calls.append(("close", repo, issue_number)))
+
+    result = finalize_github(workspace, direction="llm-agents")
+
+    assert result["status"] == "completed"
+    assert calls[0] == ("push", ["git", "push"])
+    assert calls[1] == ("comment", "example/research", 12)
     assert calls[2] == ("close", "example/research", 12)
 
 
@@ -554,14 +1156,174 @@ def test_finalize_github_fails_when_state_missing(tmp_path) -> None:
     ensure_workspace(workspace)
 
     with pytest.raises(ValueError, match="No pending GitHub finalize work"):
-        finalize_github(workspace)
+        finalize_github(workspace, direction="llm-agents")
+
+
+def test_finalize_github_missing_state_does_not_create_direction_tree(tmp_path) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    missing_dir = workspace / "directions" / "missing-dir"
+    assert not missing_dir.exists()
+
+    with pytest.raises(ValueError, match="No pending GitHub finalize work"):
+        finalize_github(workspace, direction="missing-dir")
+
+    assert not missing_dir.exists()
+
+
+def test_finalize_github_rejects_traversal_direction(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    # If finalize_github naively accepts traversal-like directions, it could look up state outside
+    # the intended `directions/<dir>/...` tree. Create a tempting state file at that escaped path.
+    escape_dir = workspace / "escape"
+    escape_dir.mkdir(parents=True, exist_ok=True)
+    state_path = escape_dir / "pipeline" / "github-finalize.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        """{
+  "direction": "escape",
+  "label": "2026-04-09",
+  "repo": "example/research",
+  "report_path": "/tmp/report.md",
+  "daily_summary_path": "/tmp/summary.md",
+  "used_fallback_profile": true,
+  "consumed_issue_numbers": [12],
+  "source_keys": ["llm-agents/alice"],
+  "status": "pending",
+  "created_at": "2026-04-09T00:00:00Z",
+  "finalized_at": ""
+}
+""",
+        encoding="utf-8",
+    )
+
+    calls: list[tuple[str, object]] = []
+    monkeypatch.setattr(
+        "auto_research.automation.subprocess.run",
+        lambda cmd, cwd, check, **kwargs: calls.append(("push", cmd)) or None,
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.comment_on_issue",
+        lambda *, repo, issue_number, body: calls.append(("comment", repo, issue_number)),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.close_issue",
+        lambda *, repo, issue_number: calls.append(("close", repo, issue_number)),
+    )
+
+    with pytest.raises(ValueError, match="Invalid direction"):
+        finalize_github(workspace, direction="../escape")
+
+    assert calls == []
+
+
+def test_finalize_github_rejects_symlinked_direction_root(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    # Create a real directory holding a pending finalize state...
+    target = tmp_path / "target-direction"
+    (target / "pipeline").mkdir(parents=True, exist_ok=True)
+    (target / "pipeline" / "github-finalize.json").write_text(
+        """{
+  "direction": "llm-agents",
+  "label": "2026-04-09",
+  "repo": "example/research",
+  "report_path": "/tmp/report.md",
+  "daily_summary_path": "/tmp/summary.md",
+  "used_fallback_profile": true,
+  "consumed_issue_numbers": [12],
+  "source_keys": ["llm-agents/alice"],
+  "status": "pending",
+  "created_at": "2026-04-09T00:00:00Z",
+  "finalized_at": ""
+}
+""",
+        encoding="utf-8",
+    )
+
+    # ...but point `directions/llm-agents` at it via a symlink.
+    symlink_root = workspace / "directions" / "llm-agents"
+    symlink_root.symlink_to(target, target_is_directory=True)
+    assert symlink_root.is_symlink()
+
+    calls: list[tuple[str, object]] = []
+    monkeypatch.setattr(
+        "auto_research.automation.subprocess.run",
+        lambda cmd, cwd, check, **kwargs: calls.append(("push", cmd)) or None,
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.comment_on_issue",
+        lambda *, repo, issue_number, body: calls.append(("comment", repo, issue_number)),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.close_issue",
+        lambda *, repo, issue_number: calls.append(("close", repo, issue_number)),
+    )
+
+    with pytest.raises(OSError, match="symlink"):
+        finalize_github(workspace, direction="llm-agents")
+
+    assert calls == []
+
+
+def test_finalize_github_rejects_symlinked_pipeline_dir(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    direction_root = workspace / "directions" / "llm-agents"
+    direction_root.mkdir(parents=True, exist_ok=True)
+
+    target = tmp_path / "pipeline-target"
+    (target / "pipeline").mkdir(parents=True, exist_ok=True)
+    (target / "pipeline" / "github-finalize.json").write_text(
+        """{
+  "direction": "llm-agents",
+  "label": "2026-04-09",
+  "repo": "example/research",
+  "report_path": "/tmp/report.md",
+  "daily_summary_path": "/tmp/summary.md",
+  "used_fallback_profile": true,
+  "consumed_issue_numbers": [12],
+  "source_keys": ["llm-agents/alice"],
+  "status": "pending",
+  "created_at": "2026-04-09T00:00:00Z",
+  "finalized_at": ""
+}
+""",
+        encoding="utf-8",
+    )
+
+    pipeline_dir = direction_root / "pipeline"
+    pipeline_dir.symlink_to(target / "pipeline", target_is_directory=True)
+    assert pipeline_dir.is_symlink()
+
+    calls: list[tuple[str, object]] = []
+    monkeypatch.setattr(
+        "auto_research.automation.subprocess.run",
+        lambda cmd, cwd, check, **kwargs: calls.append(("push", cmd)) or None,
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.comment_on_issue",
+        lambda *, repo, issue_number, body: calls.append(("comment", repo, issue_number)),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.close_issue",
+        lambda *, repo, issue_number: calls.append(("close", repo, issue_number)),
+    )
+
+    with pytest.raises(OSError, match="symlink"):
+        finalize_github(workspace, direction="llm-agents")
+
+    assert calls == []
 
 
 def test_finalize_github_skips_completed_state(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
-    ensure_workspace(workspace)
-    state_path = workspace / "pipeline" / "github-finalize.json"
-    state_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_direction_workspace(workspace, "llm-agents")
+    state_path = workspace / "directions" / "llm-agents" / "pipeline" / "github-finalize.json"
     state_path.write_text(
         """{
   "label": "2026-04-04",
@@ -585,7 +1347,7 @@ def test_finalize_github_skips_completed_state(tmp_path, monkeypatch) -> None:
         lambda **kwargs: calls.append("push") or None,
     )
 
-    result = finalize_github(workspace)
+    result = finalize_github(workspace, direction="llm-agents")
 
     assert result["status"] == "completed"
     assert calls == []
@@ -593,9 +1355,8 @@ def test_finalize_github_skips_completed_state(tmp_path, monkeypatch) -> None:
 
 def test_finalize_github_push_failure_leaves_state_pending(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
-    ensure_workspace(workspace)
-    state_path = workspace / "pipeline" / "github-finalize.json"
-    state_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_direction_workspace(workspace, "llm-agents")
+    state_path = workspace / "directions" / "llm-agents" / "pipeline" / "github-finalize.json"
     state_path.write_text(
         """{
   "label": "2026-04-04",
@@ -629,7 +1390,7 @@ def test_finalize_github_push_failure_leaves_state_pending(tmp_path, monkeypatch
     )
 
     with pytest.raises(RuntimeError, match="push failed"):
-        finalize_github(workspace)
+        finalize_github(workspace, direction="llm-agents")
 
     state = state_path.read_text(encoding="utf-8")
     assert '"status": "pending"' in state
@@ -719,7 +1480,7 @@ url: "https://github.com/example/research/issues/12"
         llm_client=FakeLLMClient(),
     )
 
-    state_path = workspace / "pipeline" / "github-finalize.json"
+    state_path = workspace / "directions" / "llm-agents" / "pipeline" / "github-finalize.json"
     assert state_path.exists()
     state = state_path.read_text(encoding="utf-8")
     assert '"repo": "example/research"' in state
@@ -735,6 +1496,7 @@ def test_run_daily_pipeline_fails_when_profile_missing_and_no_issue_intake(tmp_p
         run_daily_pipeline(
             PipelineConfig(
                 workspace=workspace,
+                direction="llm-agents",
                 top_k=1,
                 prefilter_limit=5,
                 max_results=5,
@@ -748,7 +1510,9 @@ def test_run_daily_pipeline_fails_when_profile_missing_and_no_issue_intake(tmp_p
 def test_run_daily_pipeline_preserves_existing_profile(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
     ensure_workspace(workspace)
-    profile_path = workspace / "profile" / "interest-profile.md"
+    direction = "llm-agents"
+    profile_path = workspace / "directions" / direction / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
     valid_profile_text = """# Research Interest Profile
 
 ## Core Interests
@@ -809,6 +1573,7 @@ def test_run_daily_pipeline_preserves_existing_profile(tmp_path, monkeypatch) ->
     run_daily_pipeline(
         PipelineConfig(
             workspace=workspace,
+            direction=direction,
             top_k=1,
             prefilter_limit=5,
             max_results=5,
@@ -824,7 +1589,9 @@ def test_run_daily_pipeline_preserves_existing_profile(tmp_path, monkeypatch) ->
 def test_run_daily_pipeline_with_existing_profile_skips_finalize_state(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
     ensure_workspace(workspace)
-    profile_path = workspace / "profile" / "interest-profile.md"
+    direction = "llm-agents"
+    profile_path = workspace / "directions" / direction / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
     profile_path.write_text(
         """# Research Interest Profile
 
@@ -885,6 +1652,7 @@ def test_run_daily_pipeline_with_existing_profile_skips_finalize_state(tmp_path,
     run_daily_pipeline(
         PipelineConfig(
             workspace=workspace,
+            direction=direction,
             top_k=1,
             prefilter_limit=5,
             max_results=5,
@@ -894,14 +1662,13 @@ def test_run_daily_pipeline_with_existing_profile_skips_finalize_state(tmp_path,
         llm_client=FakeLLMClient(),
     )
 
-    assert not (workspace / "pipeline" / "github-finalize.json").exists()
+    assert not (workspace / "directions" / direction / "pipeline" / "github-finalize.json").exists()
 
 
 def test_finalize_github_tolerates_issue_comment_failure(tmp_path, monkeypatch, capsys) -> None:
     workspace = tmp_path / "research-workspace"
-    ensure_workspace(workspace)
-    state_path = workspace / "pipeline" / "github-finalize.json"
-    state_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_direction_workspace(workspace, "llm-agents")
+    state_path = workspace / "directions" / "llm-agents" / "pipeline" / "github-finalize.json"
     state_path.write_text(
         """{
   "label": "2026-04-04",
@@ -930,7 +1697,7 @@ def test_finalize_github_tolerates_issue_comment_failure(tmp_path, monkeypatch, 
         lambda *, repo, issue_number: closes.append((repo, issue_number)),
     )
 
-    result = finalize_github(workspace)
+    result = finalize_github(workspace, direction="llm-agents")
 
     captured = capsys.readouterr()
     assert result["status"] == "completed"
@@ -940,9 +1707,8 @@ def test_finalize_github_tolerates_issue_comment_failure(tmp_path, monkeypatch, 
 
 def test_finalize_github_tolerates_issue_close_failure(tmp_path, monkeypatch, capsys) -> None:
     workspace = tmp_path / "research-workspace"
-    ensure_workspace(workspace)
-    state_path = workspace / "pipeline" / "github-finalize.json"
-    state_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_direction_workspace(workspace, "llm-agents")
+    state_path = workspace / "directions" / "llm-agents" / "pipeline" / "github-finalize.json"
     state_path.write_text(
         """{
   "label": "2026-04-04",
@@ -971,7 +1737,7 @@ def test_finalize_github_tolerates_issue_close_failure(tmp_path, monkeypatch, ca
         lambda **kwargs: (_ for _ in ()).throw(RuntimeError("close failed")),
     )
 
-    result = finalize_github(workspace)
+    result = finalize_github(workspace, direction="llm-agents")
 
     captured = capsys.readouterr()
     assert result["status"] == "completed"
@@ -986,7 +1752,7 @@ def test_ensure_profile_exists_rejects_invalid_generated_profile(tmp_path, monke
 
     monkeypatch.setattr(
         "auto_research.automation.build_fallback_profile_from_issue_intake",
-        lambda workspace, repo=None: type(
+        lambda workspace, direction, repo=None: type(
             "Fallback",
             (),
             {
@@ -1001,17 +1767,20 @@ def test_ensure_profile_exists_rejects_invalid_generated_profile(tmp_path, monke
     from auto_research.automation import _ensure_profile_exists
 
     with pytest.raises(ValueError, match="Generated invalid fallback interest profile"):
-        _ensure_profile_exists(workspace, profile_path)
+        _ensure_profile_exists(workspace, "llm-agents", profile_path)
 
 
 def test_run_daily_pipeline_backfills_manual_pdf(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
-    paper_dir = workspace / "papers" / "2603.23566"
+    ensure_workspace(workspace)
+    direction = "npu-compiler"
+    paper_dir = workspace / "directions" / direction / "papers" / "2603.23566"
     paper_dir.mkdir(parents=True, exist_ok=True)
     pdf_path = paper_dir / "source.pdf"
     pdf_path.write_bytes(b"%PDF-1.4\nManual text\n")
-    (workspace / "profile").mkdir(parents=True, exist_ok=True)
-    (workspace / "profile" / "interest-profile.md").write_text(
+    profile_path = workspace / "directions" / direction / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
         """# Research Interest Profile
 
 ## Core Interests
@@ -1054,6 +1823,7 @@ def test_run_daily_pipeline_backfills_manual_pdf(tmp_path, monkeypatch) -> None:
     result = run_daily_pipeline(
         PipelineConfig(
             workspace=workspace,
+            direction=direction,
             top_k=1,
             prefilter_limit=5,
             max_results=5,

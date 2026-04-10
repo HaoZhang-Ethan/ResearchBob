@@ -68,6 +68,18 @@ class FallbackProfileResult:
     repo: str | None
     issue_numbers: list[int]
     source_keys: list[str]
+    direction: str
+
+
+def discover_issue_directions(workspace: Path) -> list[str]:
+    issue_root = workspace / "issue-intake"
+    if not issue_root.exists():
+        return []
+    directions: list[str] = []
+    for direction_dir in sorted(path for path in issue_root.iterdir() if path.is_dir()):
+        if any((user_dir / "summary.md").exists() for user_dir in direction_dir.iterdir() if user_dir.is_dir()):
+            directions.append(direction_dir.name)
+    return directions
 
 
 IssueFetcher = Callable[[str, str, int], list[GitHubIssue]]
@@ -82,6 +94,31 @@ def _slugify(value: str) -> str:
     if not normalized:
         raise IssueParseError("direction must normalize to a non-empty filesystem-safe value")
     return normalized
+
+
+def _validate_direction_segment(direction: str) -> str:
+    candidate = direction.strip()
+    if not candidate:
+        raise ValueError("direction must be a non-empty string")
+    segment_path = Path(candidate)
+    if segment_path.is_absolute() or len(segment_path.parts) != 1:
+        raise ValueError("direction must be a single safe segment")
+    if segment_path.name in {"", ".", ".."} or candidate != segment_path.name:
+        raise ValueError("direction must be a single safe segment")
+    return candidate
+
+
+def canonicalize_direction_slug(direction: str) -> str:
+    """Validate a user-provided direction label and return its canonical slug.
+
+    This is intended for any user-facing / runtime direction input. It rejects
+    traversal/absolute/multi-segment values rather than silently normalizing them.
+    """
+    candidate = _validate_direction_segment(direction)
+    try:
+        return _slugify(candidate)
+    except IssueParseError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def parse_github_repo(remote_url: str) -> str:
@@ -249,12 +286,18 @@ def _dedupe(items: list[str]) -> list[str]:
     return ordered
 
 
-def _collect_issue_intake_sources(workspace: Path) -> list[tuple[str, str, str]]:
+def _collect_issue_intake_sources(workspace: Path, direction: str | None = None) -> list[tuple[str, str, str]]:
     issue_root = workspace / "issue-intake"
     if not issue_root.exists():
         return []
+    if direction:
+        direction_dirs = [issue_root / direction]
+    else:
+        direction_dirs = sorted(path for path in issue_root.iterdir() if path.is_dir())
     sources: list[tuple[str, str, str]] = []
-    for direction_dir in sorted(path for path in issue_root.iterdir() if path.is_dir()):
+    for direction_dir in direction_dirs:
+        if not direction_dir.is_dir():
+            continue
         for user_dir in sorted(path for path in direction_dir.iterdir() if path.is_dir()):
             summary_path = user_dir / "summary.md"
             if not summary_path.exists():
@@ -273,21 +316,23 @@ def _collect_issue_numbers_for_source(user_dir: Path) -> list[int]:
     return issue_numbers
 
 
-def render_profile_from_issue_intake(workspace: Path) -> str:
-    return build_fallback_profile_from_issue_intake(workspace).markdown
+def render_profile_from_issue_intake(workspace: Path, direction: str) -> str:
+    return build_fallback_profile_from_issue_intake(workspace, direction=direction).markdown
 
 
 def build_fallback_profile_from_issue_intake(
     workspace: Path,
+    direction: str,
     repo: str | None = None,
 ) -> FallbackProfileResult:
-    sources = _collect_issue_intake_sources(workspace)
+    safe_direction = canonicalize_direction_slug(direction)
+    sources = _collect_issue_intake_sources(workspace, safe_direction)
     if not sources:
-        raise ValueError("No usable issue intake data available to generate an interest profile")
+        raise ValueError(f"No usable issue intake data available for direction: {direction}")
 
-    source_lines = [f"> - {direction} / {username}" for direction, username, _ in sources]
-    source_keys = [f"{direction}/{username}" for direction, username, _ in sources]
-    core_interests = _dedupe([direction for direction, _, _ in sources])
+    source_lines = [f"> - {direction_name} / {username}" for direction_name, username, _ in sources]
+    source_keys = [f"{direction_name}/{username}" for direction_name, username, _ in sources]
+    core_interests = _dedupe([direction_name for direction_name, _, _ in sources])
     soft_boundaries: list[str] = []
     exclusions: list[str] = []
     current_phase_bias: list[str] = []
@@ -295,7 +340,7 @@ def build_fallback_profile_from_issue_intake(
     open_questions: list[str] = []
     issue_numbers: list[int] = []
 
-    for direction, _, text in sources:
+    for direction_name, _, text in sources:
         requirements = _extract_summary_section(text, "Requirements")
         constraints = _extract_summary_section(text, "Constraints")
         notes = _extract_summary_section(text, "Notes")
@@ -306,11 +351,11 @@ def build_fallback_profile_from_issue_intake(
         open_questions.extend([item for item in notes if "?" in item])
         soft_boundaries.extend([item for item in notes if "?" not in item])
         evaluation_heuristics.extend([item for item in requirements if "prefer" in item.lower() or "priority" in item.lower()])
-        soft_boundaries.extend([item for item in active_issues if direction not in item.lower()])
+        soft_boundaries.extend([item for item in active_issues if direction_name not in item.lower()])
 
     issue_root = workspace / "issue-intake"
-    for direction, username, _ in sources:
-        issue_numbers.extend(_collect_issue_numbers_for_source(issue_root / direction / username))
+    for direction_name, username, _ in sources:
+        issue_numbers.extend(_collect_issue_numbers_for_source(issue_root / direction_name / username))
 
     sections = {
         "Core Interests": _dedupe(core_interests + current_phase_bias[:2]) or ["issue-intake derived research topics"],
@@ -338,6 +383,7 @@ def build_fallback_profile_from_issue_intake(
         repo=repo,
         issue_numbers=sorted(set(issue_numbers)),
         source_keys=source_keys,
+        direction=safe_direction,
     )
 
 

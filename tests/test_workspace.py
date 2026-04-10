@@ -18,7 +18,7 @@ from auto_research.registry import (
     RegistryCorruptionError,
     write_registry,
 )
-from auto_research.workspace import ensure_workspace
+from auto_research.workspace import ensure_direction_workspace, ensure_workspace
 
 
 def test_ensure_workspace_creates_phase1_directories(tmp_path) -> None:
@@ -29,6 +29,102 @@ def test_ensure_workspace_creates_phase1_directories(tmp_path) -> None:
     assert (root / "reports" / "daily").is_dir()
     assert (root / "reports" / "manual").is_dir()
     assert (root / "issue-intake").is_dir()
+
+
+def test_ensure_workspace_creates_shared_and_direction_roots(tmp_path) -> None:
+    root = ensure_workspace(tmp_path / "research-workspace")
+
+    assert (root / "issue-intake").is_dir()
+    assert (root / "directions").is_dir()
+
+
+def test_ensure_direction_workspace_creates_direction_local_directories(tmp_path) -> None:
+    root = ensure_direction_workspace(tmp_path / "research-workspace", "llm-agents")
+
+    assert root == tmp_path / "research-workspace" / "directions" / "llm-agents"
+    assert (root / "profile").is_dir()
+    assert (root / "papers").is_dir()
+    assert (root / "reports" / "daily").is_dir()
+    assert (root / "reports" / "manual").is_dir()
+    assert (root / "reports" / "longterm").is_dir()
+    assert (root / "exports" / "zotero").is_dir()
+    assert (root / "pipeline").is_dir()
+
+
+def test_ensure_workspace_treats_direction_root_as_direction_workspace(tmp_path) -> None:
+    workspace_root = tmp_path / "research-workspace"
+    direction_root = ensure_direction_workspace(workspace_root, "llm-agents")
+
+    returned = ensure_workspace(direction_root)
+
+    assert returned == direction_root
+    assert (direction_root / "profile").is_dir()
+    assert (direction_root / "papers").is_dir()
+    assert (direction_root / "reports" / "daily").is_dir()
+    assert (direction_root / "reports" / "manual").is_dir()
+    assert (direction_root / "reports" / "longterm").is_dir()
+    assert (direction_root / "exports" / "zotero").is_dir()
+    assert (direction_root / "pipeline").is_dir()
+
+    # Regression: ensure_workspace(direction_root) must not create nested shared roots.
+    assert not (direction_root / "issue-intake").exists()
+    assert not (direction_root / "directions").exists()
+
+
+def test_ensure_workspace_does_not_misclassify_arbitrary_directions_parent(tmp_path) -> None:
+    root = tmp_path / "directions" / "research-workspace"
+
+    returned = ensure_workspace(root)
+
+    assert returned == root
+    assert (root / "profile").is_dir()
+    assert (root / "papers").is_dir()
+    assert (root / "reports" / "daily").is_dir()
+    assert (root / "reports" / "manual").is_dir()
+    assert (root / "issue-intake").is_dir()
+    assert (root / "directions").is_dir()
+    assert not (tmp_path / "profile").exists()
+
+
+def test_ensure_direction_workspace_rejects_symlinked_direction_root(tmp_path) -> None:
+    workspace_root = tmp_path / "research-workspace"
+    ensure_workspace(workspace_root)
+    outside = tmp_path / "outside-direction"
+    outside.mkdir(parents=True, exist_ok=True)
+    symlink_root = workspace_root / "directions" / "llm-agents"
+    os.symlink(outside, symlink_root)
+
+    with pytest.raises(OSError, match="symlink"):
+        ensure_direction_workspace(workspace_root, "llm-agents")
+
+
+def test_ensure_direction_workspace_rejects_absolute_direction(tmp_path) -> None:
+    workspace_root = tmp_path / "research-workspace"
+    ensure_workspace(workspace_root)
+
+    with pytest.raises(ValueError, match="direction"):
+        ensure_direction_workspace(workspace_root, "/etc/passwd")
+
+
+def test_ensure_direction_workspace_rejects_traversal_direction(tmp_path) -> None:
+    workspace_root = tmp_path / "research-workspace"
+    ensure_workspace(workspace_root)
+
+    with pytest.raises(ValueError, match="direction"):
+        ensure_direction_workspace(workspace_root, "..")
+
+
+def test_ensure_direction_workspace_rejects_dangling_symlinked_direction_root(tmp_path) -> None:
+    workspace_root = tmp_path / "research-workspace"
+    ensure_workspace(workspace_root)
+    target = tmp_path / "dangling-direction"
+    target.mkdir(parents=True, exist_ok=True)
+    symlink_root = workspace_root / "directions" / "llm-agents"
+    os.symlink(target, symlink_root)
+    target.rmdir()
+
+    with pytest.raises(OSError, match="symlink"):
+        ensure_direction_workspace(workspace_root, "llm-agents")
 
 
 def test_ensure_workspace_rejects_symlinked_root(tmp_path) -> None:
