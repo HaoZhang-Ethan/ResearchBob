@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,8 @@ import pytest
 from auto_research.automation import PipelineConfig, finalize_github, run_daily_pipeline
 from auto_research.models import RegistryEntry
 from auto_research.openai_client import OpenAIResponsesClient, SummaryArtifact
+from auto_research.retrieval import RetrievedCandidate
+from auto_research.search_profile import SearchProfile, write_search_profile
 from auto_research.workspace import ensure_direction_workspace, ensure_workspace
 
 
@@ -1835,3 +1838,443 @@ def test_run_daily_pipeline_backfills_manual_pdf(tmp_path, monkeypatch) -> None:
 
     assert (paper_dir / "detailed-analysis.md").exists()
     assert result.longterm_summary_path.exists()
+
+
+def test_run_daily_pipeline_preserves_candidate_when_pdf_missing(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    direction_root = workspace / "directions" / "fl-sys"
+    ensure_direction_workspace(workspace, "fl-sys")
+    (direction_root / "profile" / "interest-profile.md").write_text(
+        "# Research Interest Profile\n\n## Core Interests\n- federated learning systems\n\n## Soft Boundaries\n- client orchestration\n\n## Exclusions\n- pure theory\n\n## Current-Phase Bias\n- systems scalability\n\n## Evaluation Heuristics\n- prefer systems papers\n\n## Open Questions\n- how to manage heterogeneity\n",
+        encoding="utf-8",
+    )
+    write_search_profile(
+        direction_root / "profile" / "search-profile.json",
+        SearchProfile(
+            direction="fl-sys",
+            canonical_topic="federated learning systems",
+            aliases=["federated learning"],
+            related_terms=["client orchestration"],
+            exclude_terms=["pure theory"],
+            preferred_problem_types=["systems scalability"],
+            preferred_system_axes=["heterogeneity"],
+            retrieval_hints=["prefer systems papers"],
+            seed_queries=["federated learning systems"],
+            source_preferences=["arxiv", "semantic scholar"],
+        ),
+    )
+
+    candidate = RetrievedCandidate(
+        paper_id="2501.00001v1",
+        title="Federated Learning Systems at Scale",
+        summary="Systems paper.",
+        pdf_url="",
+        landing_page_url="https://example.test/paper",
+        source_family="semantic_scholar",
+        discovery_sources=["agent_web"],
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_hybrid_retrieval", lambda **kwargs: [candidate])
+
+    run_daily_pipeline(
+        PipelineConfig(workspace=workspace, direction="fl-sys", label="2026-04-10"),
+        llm_client=FakeLLMClient(),
+    )
+
+    metadata_text = (direction_root / "papers" / "2501.00001" / "metadata.json").read_text(
+        encoding="utf-8"
+    )
+    summary_text = (direction_root / "reports" / "daily" / "2026-04-10-summary.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert '\"pdf_status\": \"manual_required\"' in metadata_text
+    assert "Needs Manual PDF" in summary_text
+    assert "Federated Learning Systems at Scale" in summary_text
+
+
+def test_run_daily_pipeline_clears_manual_pdf_when_local_pdf_present(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    direction_root = workspace / "directions" / "fl-sys"
+    ensure_direction_workspace(workspace, "fl-sys")
+    (direction_root / "profile" / "interest-profile.md").write_text(
+        "# Research Interest Profile\n\n## Core Interests\n- federated learning systems\n\n## Soft Boundaries\n- client orchestration\n\n## Exclusions\n- pure theory\n\n## Current-Phase Bias\n- systems scalability\n\n## Evaluation Heuristics\n- prefer systems papers\n\n## Open Questions\n- how to manage heterogeneity\n",
+        encoding="utf-8",
+    )
+    write_search_profile(
+        direction_root / "profile" / "search-profile.json",
+        SearchProfile(
+            direction="fl-sys",
+            canonical_topic="federated learning systems",
+            aliases=["federated learning"],
+            related_terms=["client orchestration"],
+            exclude_terms=["pure theory"],
+            preferred_problem_types=["systems scalability"],
+            preferred_system_axes=["heterogeneity"],
+            retrieval_hints=["prefer systems papers"],
+            seed_queries=["federated learning systems"],
+            source_preferences=["arxiv", "semantic scholar"],
+        ),
+    )
+
+    paper_dir = direction_root / "papers" / "2501.00001"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    (paper_dir / "metadata.json").write_text(
+        '{"arxiv_id": "2501.00001v1", "title": "Federated Learning Systems at Scale", "pdf_status": "manual_required"}\n',
+        encoding="utf-8",
+    )
+    (paper_dir / "source.pdf").write_bytes(b"%PDF-1.4\nmanual\n")
+
+    candidate = RetrievedCandidate(
+        paper_id="2501.00001v1",
+        title="Federated Learning Systems at Scale",
+        summary="Systems paper.",
+        pdf_url="",
+        landing_page_url="https://example.test/paper",
+        source_family="semantic_scholar",
+        discovery_sources=["agent_web"],
+    )
+    monkeypatch.setattr("auto_research.automation.run_hybrid_retrieval", lambda **kwargs: [candidate])
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    run_daily_pipeline(
+        PipelineConfig(workspace=workspace, direction="fl-sys", label="2026-04-10"),
+        llm_client=FakeLLMClient(),
+    )
+
+    metadata_text = (paper_dir / "metadata.json").read_text(encoding="utf-8")
+    summary_text = (direction_root / "reports" / "daily" / "2026-04-10-summary.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"pdf_status": "manual_required"' not in metadata_text
+    assert "Federated Learning Systems at Scale" not in summary_text
+
+
+def test_run_daily_pipeline_resumes_after_manual_pdf_upload(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    direction_root = ensure_direction_workspace(workspace, "fl-sys")
+    paper_dir = direction_root / "papers" / "2501.00001"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    (direction_root / "profile" / "interest-profile.md").write_text(
+        "# Research Interest Profile\n\n## Core Interests\n- federated learning systems\n\n## Soft Boundaries\n- client orchestration\n\n## Exclusions\n- pure theory\n\n## Current-Phase Bias\n- systems scalability\n\n## Evaluation Heuristics\n- prefer systems papers\n\n## Open Questions\n- how to manage heterogeneity\n",
+        encoding="utf-8",
+    )
+    (paper_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "arxiv_id": "2501.00001v1",
+                "title": "Federated Learning Systems at Scale",
+                "summary": "Systems paper.",
+                "pdf_url": "",
+                "landing_page_url": "https://example.test/paper",
+                "discovery_sources": ["agent_web"],
+                "source_family": "semantic_scholar",
+                "pdf_status": "manual_required",
+                "pdf_source": "unknown",
+                "first_seen_at": "2026-04-10T00:00:00Z",
+                "last_checked_at": "2026-04-10T00:00:00Z",
+                "manual_pdf_note": "",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (paper_dir / "state.json").write_text(
+        json.dumps(
+            {
+                "status": "needs_retry",
+                "last_attempt_at": "2026-04-10T00:00:00Z",
+                "last_error": "PDF missing",
+                "failure_kind": "manual_required",
+                "analysis_version": 1,
+                "source_updated_at": "2026-04-10T00:00:00Z",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (paper_dir / "source.pdf").write_bytes(b"%PDF-1.4\nManual text\n")
+
+    monkeypatch.setattr("auto_research.automation.run_hybrid_retrieval", lambda **kwargs: [])
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    llm_client = FakeLLMClient()
+    captured: dict[str, object] = {}
+    original_summarize_daily = llm_client.summarize_daily_findings
+
+    def _capture_daily_summary(*, profile, analyses, failed_items):
+        captured["analyses"] = analyses
+        captured["failed_items"] = failed_items
+        return original_summarize_daily(profile=profile, analyses=analyses, failed_items=failed_items)
+
+    monkeypatch.setattr(llm_client, "summarize_daily_findings", _capture_daily_summary)
+
+    result = run_daily_pipeline(
+        PipelineConfig(workspace=workspace, direction="fl-sys", label="2026-04-11"),
+        llm_client=llm_client,
+    )
+
+    assert (paper_dir / "problem-solution.md").exists()
+    assert '"status": "analysis_done"' in (paper_dir / "state.json").read_text(encoding="utf-8")
+    assert '"pdf_status": "manual_uploaded"' in (paper_dir / "metadata.json").read_text(encoding="utf-8")
+    assert any(entry.arxiv_id == "2501.00001v1" for entry in result.selected_entries)
+
+    bundle = json.loads(result.bundle_path.read_text(encoding="utf-8"))
+    assert any(item["paper_id"] == "2501.00001v1" for item in bundle["selected_papers"])
+
+    history_lines = result.history_path.read_text(encoding="utf-8").splitlines()
+    last_record = json.loads(history_lines[-1])
+    assert "2501.00001v1" in last_record["selected_ids"]
+
+    analyses = captured.get("analyses")
+    assert isinstance(analyses, list)
+    assert len(analyses) == 1
+    assert analyses[0]["paper_id"] == "2501.00001v1"
+
+
+def test_run_daily_pipeline_preserves_arxiv_published_updated_and_relevance(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    direction_root = workspace / "directions" / "llm-agents"
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-25T08:54:53Z",
+        relevance_band="adjacent",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    result = run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-09",
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    assert result.selected_entries[0].published_at == "2026-03-24T08:54:53Z"
+    assert result.selected_entries[0].updated_at == "2026-03-25T08:54:53Z"
+    assert result.selected_entries[0].relevance_band == "adjacent"
+
+
+def test_run_hybrid_retrieval_raises_on_invalid_search_profile(tmp_path, monkeypatch) -> None:
+    from auto_research.automation import run_hybrid_retrieval
+
+    workspace = tmp_path / "research-workspace"
+    direction_root = workspace / "directions" / "fl-sys"
+    ensure_direction_workspace(workspace, "fl-sys")
+    (direction_root / "profile" / "interest-profile.md").write_text(
+        "# Research Interest Profile\n\n## Core Interests\n- federated learning systems\n\n## Soft Boundaries\n- client orchestration\n\n## Exclusions\n- pure theory\n\n## Current-Phase Bias\n- systems scalability\n\n## Evaluation Heuristics\n- prefer systems papers\n\n## Open Questions\n- how to manage heterogeneity\n",
+        encoding="utf-8",
+    )
+    (direction_root / "profile" / "search-profile.json").write_text(
+        "{this is not valid json",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [])
+
+    with pytest.raises(ValueError, match="search-profile"):
+        run_hybrid_retrieval(
+            workspace=direction_root,
+            profile_path=direction_root / "profile" / "interest-profile.md",
+            llm_client=FakeLLMClient(),
+            max_results=3,
+        )
+
+
+def test_run_daily_pipeline_prefers_enriched_pdf_url_over_arxiv_fallback(tmp_path, monkeypatch) -> None:
+    from auto_research.automation import HybridRetrievalResult
+
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    direction_root = workspace / "directions" / "llm-agents"
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+
+    arxiv_entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-25T08:54:53Z",
+        relevance_band="adjacent",
+        source="arxiv",
+    )
+    merged_candidate = RetrievedCandidate(
+        paper_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Web says PDF exists.",
+        pdf_url="https://example.test/paper.pdf",
+        landing_page_url="https://example.test/paper",
+        source_family="arxiv",
+        discovery_sources=["arxiv_api", "agent_web"],
+    )
+
+    monkeypatch.setattr(
+        "auto_research.automation.run_hybrid_retrieval",
+        lambda **kwargs: HybridRetrievalResult(
+            candidates=[merged_candidate],
+            arxiv_entries=[arxiv_entry],
+        ),
+    )
+
+    downloaded: list[str] = []
+
+    def fake_download_pdf(*, client, url: str, destination: Path) -> None:
+        downloaded.append(url)
+        destination.write_bytes(b"%PDF-1.4\nExample text\n")
+
+    monkeypatch.setattr("auto_research.automation.download_pdf", fake_download_pdf)
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-09",
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    assert downloaded == ["https://example.test/paper.pdf"]
+    paper_dir = direction_root / "papers" / "2603.23566"
+    assert (paper_dir / "source.pdf").exists()
+    state_text = (paper_dir / "state.json").read_text(encoding="utf-8")
+    assert "needs_retry" not in state_text

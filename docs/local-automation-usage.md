@@ -146,6 +146,12 @@ The pipeline:
 6. exports Zotero RIS
 7. optionally commits and pushes generated outputs
 
+### Issue-to-Profile Hybrid Retrieval
+
+When `daily-pipeline` consumes the issue intake, it now synthesizes both `directions/<direction>/profile/interest-profile.md` and the paired `search-profile.json`. This keeps the search profile aligned with the direction, requirements, and constraints captured in the interest profile while tailoring the requests used for search. The pipeline issues arXiv API queries and agent-assisted web retrieval guided by the same search profile, merges those candidates, and ranks them together before producing the final artifacts.
+
+Relevant papers that are missing PDFs are preserved with `workflow_state.manual_required` and the reason `Needs Manual PDF`. That state indicates operators should download the PDF and place it at `research-workspace/directions/<direction>/papers/<paper_id>/source.pdf`. The next daily run automatically detects the presence of `source.pdf` in the paper directory and resumes ranking, summarizing, and reporting for that paper along with other candidates.
+
 ## Cron Example
 
 Run every day at 09:00:

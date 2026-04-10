@@ -14,6 +14,8 @@ VALID_STATUSES = {
     "analysis_done",
     "analysis_failed",
     "needs_retry",
+    "manual_required",
+    "manual_uploaded",
 }
 
 

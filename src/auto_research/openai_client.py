@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 import httpx
 
 from auto_research.models import InterestProfile, RegistryEntry
+from auto_research.search_profile import SearchProfile, validate_search_profile
 from auto_research.selection import RankedCandidate
 
 
@@ -29,6 +30,12 @@ class SummaryArtifact:
     limitations: list[str]
     relevance_to_profile: str
     analyst_notes: str
+
+
+@dataclass(slots=True)
+class IssueProfileArtifacts:
+    interest_profile_markdown: str
+    search_profile: SearchProfile
 
 
 def _schema_section_field(name: str) -> dict:
@@ -101,36 +108,47 @@ class OpenAIResponsesClient:
         self._base_url = _normalize_base_url(configured_base_url)
         self._client = client or httpx.Client(timeout=60.0)
 
-    def _request(self, *, instructions: str, input_payload: str, schema: dict) -> dict:
+    def _request(
+        self,
+        *,
+        instructions: str,
+        input_payload: str,
+        schema: dict,
+        tools: list[dict[str, object]] | None = None,
+    ) -> dict:
+        request_json: dict[str, object] = {
+            "model": self._model,
+            "instructions": instructions,
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": input_payload,
+                        }
+                    ],
+                }
+            ],
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": schema["name"],
+                    "schema": schema["schema"],
+                    "strict": True,
+                }
+            },
+        }
+        if tools is not None:
+            request_json["tools"] = tools
+
         response = self._client.post(
             self._base_url,
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": self._model,
-                "instructions": instructions,
-                "input": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "input_text",
-                                "text": input_payload,
-                            }
-                        ],
-                    }
-                ],
-                "text": {
-                    "format": {
-                        "type": "json_schema",
-                        "name": schema["name"],
-                        "schema": schema["schema"],
-                        "strict": True,
-                    }
-                },
-            },
+            json=request_json,
         )
         response.raise_for_status()
         content_type = response.headers.get("content-type", "")
@@ -471,3 +489,101 @@ class OpenAIResponsesClient:
             schema=schema,
         )
         return data["markdown"]
+
+    def build_issue_profiles(self, *, direction: str, issue_texts: list[str]) -> IssueProfileArtifacts:
+        schema = {
+            "name": "issue_profile_artifacts",
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "interest_profile_markdown": {"type": "string"},
+                    "search_profile": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "direction": {"type": "string"},
+                            "canonical_topic": {"type": "string"},
+                            "aliases": {"type": "array", "items": {"type": "string"}},
+                            "related_terms": {"type": "array", "items": {"type": "string"}},
+                            "exclude_terms": {"type": "array", "items": {"type": "string"}},
+                            "preferred_problem_types": {"type": "array", "items": {"type": "string"}},
+                            "preferred_system_axes": {"type": "array", "items": {"type": "string"}},
+                            "retrieval_hints": {"type": "array", "items": {"type": "string"}},
+                            "seed_queries": {"type": "array", "items": {"type": "string"}},
+                            "source_preferences": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": [
+                            "direction",
+                            "canonical_topic",
+                            "aliases",
+                            "related_terms",
+                            "exclude_terms",
+                            "preferred_problem_types",
+                            "preferred_system_axes",
+                            "retrieval_hints",
+                            "seed_queries",
+                            "source_preferences",
+                        ],
+                    },
+                },
+                "required": ["interest_profile_markdown", "search_profile"],
+            },
+        }
+        data = self._request(
+            instructions="Turn issue intake into an interest profile and a retrieval-oriented search profile.",
+            input_payload=json.dumps({"direction": direction, "issue_texts": issue_texts}, ensure_ascii=False),
+            schema=schema,
+        )
+        search_profile = validate_search_profile(SearchProfile(**data["search_profile"]))
+        return IssueProfileArtifacts(
+            interest_profile_markdown=data["interest_profile_markdown"],
+            search_profile=search_profile,
+        )
+
+    def retrieve_web_candidates(self, *, search_profile: SearchProfile, limit: int) -> list[dict[str, object]]:
+        schema = {
+            "name": "web_retrieval_candidates",
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "candidates": {
+                        "type": "array",
+                        "maxItems": limit,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "title": {"type": "string"},
+                                "authors": {"type": "array", "items": {"type": "string"}},
+                                "year": {"type": "integer"},
+                                "arxiv_id": {"type": "string"},
+                                "landing_page_url": {"type": "string"},
+                                "pdf_url": {"type": "string"},
+                                "source_family": {"type": "string"},
+                                "relevance_reason": {"type": "string"},
+                            },
+                            "required": [
+                                "title",
+                                "authors",
+                                "year",
+                                "arxiv_id",
+                                "landing_page_url",
+                                "pdf_url",
+                                "source_family",
+                                "relevance_reason",
+                            ],
+                        },
+                    }
+                },
+                "required": ["candidates"],
+            },
+        }
+        data = self._request(
+            instructions="Use broader web retrieval to find paper candidates matching the search profile.",
+            input_payload=json.dumps({"search_profile": asdict(search_profile), "limit": limit}, ensure_ascii=False),
+            schema=schema,
+            tools=[{"type": "web_search"}],
+        )
+        return list(data["candidates"])
