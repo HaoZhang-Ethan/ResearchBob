@@ -18,15 +18,17 @@ jobs:
   review:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.head.repo.full_name == github.repository &&
-      !github.event.pull_request.draft)
+      (
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        !github.event.pull_request.draft
+      )
     runs-on: self-hosted
     timeout-minutes: 15
 
     env:
       AI_BASE_URL: http://100.97.129.55:8080
       AI_MODEL: gpt-5.4
-      COMMENT_MARKER: <!-- ai-pr-review-bot -->
+      COMMENT_MARKER: "<!-- ai-pr-review-bot -->"
 
     steps:
       - name: Prepare PR context
@@ -71,7 +73,13 @@ jobs:
               };
 
               const size = JSON.stringify(entry).length;
+
               if (used + size > maxTotalChars) {
+                selectedFiles.push({
+                  filename: f.filename,
+                  status: f.status,
+                  note: '[omitted because total diff budget was reached]'
+                });
                 continue;
               }
 
@@ -94,19 +102,18 @@ jobs:
             };
 
             fs.writeFileSync('pr_context.json', JSON.stringify(payload, null, 2), 'utf8');
+            core.notice(`Prepared context for ${files.length} changed files.`);
 
-      - name: Call AI
+      - name: Build AI request
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         with:
           script: |
             const fs = require('fs');
 
             const prContext = fs.readFileSync('pr_context.json', 'utf8');
 
-            const prompt = [
+            const instructions = [
               'You are a meticulous senior software engineer reviewing a pull request.',
               '',
               'Review principles:',
@@ -125,39 +132,59 @@ jobs:
               '- Otherwise, for each issue use:',
               '  - [high|medium|low] `path/to/file`: short title',
               '    - Why it matters',
-              '    - Suggested fix',
-              '',
-              'Pull request context:',
-              prContext
+              '    - Suggested fix'
             ].join('\n');
 
-            const url = process.env.AI_BASE_URL + '/v1/responses';
+            const payload = {
+              model: process.env.AI_MODEL,
+              instructions: instructions,
+              input: ['Pull request context:', prContext].join('\n')
+            };
 
-            const resp = await fetch(url, {
-              method: 'POST',
-              headers: {
-                'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                model: process.env.AI_MODEL,
-                input: prompt
-              })
-            });
+            fs.writeFileSync('request.json', JSON.stringify(payload, null, 2), 'utf8');
+            core.notice(
+              `Built request.json with keys: ${Object.keys(payload).join(', ')}; instructions length: ${instructions.length}`
+            );
 
-            const rawText = await resp.text();
-            fs.writeFileSync('result.json', rawText, 'utf8');
+      - name: Call AI
+        if: github.event_name == 'pull_request'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          echo "=== REQUEST DEBUG ==="
+          cat request.json
 
-            if (!resp.ok) {
-              core.setFailed('AI request failed: HTTP ' + resp.status + '\n' + rawText.slice(0, 1500));
-              return;
-            }
+          HTTP_STATUS=$(curl -sS -o result.json -w "%{http_code}" \
+            -X POST "${AI_BASE_URL}/v1/responses" \
+            -H "Authorization: Bearer ${OPENAI_API_KEY}" \
+            -H "Content-Type: application/json" \
+            --data @request.json)
+
+          echo "=== HTTP STATUS ==="
+          echo "${HTTP_STATUS}"
+
+          echo "=== RAW RESULT ==="
+          cat result.json
+
+          if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
+            echo "AI request failed"
+            exit 1
+          fi
+
+      - name: Extract response
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const rawText = fs.readFileSync('result.json', 'utf8');
 
             let data;
             try {
               data = JSON.parse(rawText);
             } catch (e) {
-              core.setFailed('AI returned non-JSON response:\n' + rawText.slice(0, 1500));
+              core.setFailed('AI returned non-JSON response:\n' + rawText.slice(0, 2000));
               return;
             }
 
@@ -176,9 +203,7 @@ jobs:
             }
 
             if (!review && Array.isArray(data.choices)) {
-              try {
-                review = data.choices[0].message.content || '';
-              } catch (e) {}
+              review = data.choices?.[0]?.message?.content || '';
             }
 
             if (!review) {
@@ -186,6 +211,7 @@ jobs:
             }
 
             fs.writeFileSync('review.md', review, 'utf8');
+            core.notice('AI review generated successfully.');
 
       - name: Upsert PR comment
         if: github.event_name == 'pull_request'
@@ -196,14 +222,11 @@ jobs:
 
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const issue_number = context.payload.pull_request.number;
+            const issueNumber = context.payload.pull_request.number;
 
             const review = fs.readFileSync('review.md', 'utf8').trim();
             const marker = process.env.COMMENT_MARKER;
-            const runUrl =
-              process.env.GITHUB_SERVER_URL + '/' +
-              process.env.GITHUB_REPOSITORY + '/actions/runs/' +
-              process.env.GITHUB_RUN_ID;
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
 
             const body = [
               marker,
@@ -212,7 +235,7 @@ jobs:
               review,
               '',
               '---',
-              '_Updated automatically by workflow run [#' + process.env.GITHUB_RUN_ID + '](' + runUrl + ')._'
+              `_Updated automatically by workflow run [#${process.env.GITHUB_RUN_ID}](${runUrl})._`
             ].join('\n');
 
             const comments = await github.paginate(
@@ -220,7 +243,7 @@ jobs:
               {
                 owner,
                 repo,
-                issue_number,
+                issue_number: issueNumber,
                 per_page: 100
               }
             );
@@ -234,11 +257,13 @@ jobs:
                 comment_id: existing.id,
                 body
               });
+              core.notice(`Updated existing AI review comment: ${existing.id}`);
             } else {
               await github.rest.issues.createComment({
                 owner,
                 repo,
-                issue_number,
+                issue_number: issueNumber,
                 body
               });
+              core.notice('Created new AI review comment.');
             }
