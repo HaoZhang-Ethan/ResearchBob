@@ -8,7 +8,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from auto_research.search_profile import write_search_profile
 from auto_research.workspace import ensure_workspace
+from auto_research.workspace import ensure_direction_workspace
 
 _HTTPS_REMOTE_RE = re.compile(r"^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$")
 _SSH_REMOTE_RE = re.compile(r"^git@github\.com:(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$")
@@ -385,6 +387,42 @@ def build_fallback_profile_from_issue_intake(
         source_keys=source_keys,
         direction=safe_direction,
     )
+
+
+def _collect_direction_issue_texts(workspace: Path, direction: str) -> list[str]:
+    texts: list[str] = []
+    issue_root = workspace / "issue-intake" / direction
+    if not issue_root.exists():
+        return texts
+    for user_dir in sorted(path for path in issue_root.iterdir() if path.is_dir()):
+        summary_path = user_dir / "summary.md"
+        if summary_path.exists():
+            texts.append(summary_path.read_text(encoding="utf-8"))
+        requests_dir = user_dir / "requests"
+        if not requests_dir.exists():
+            continue
+        for request_path in sorted(requests_dir.glob("*.md")):
+            texts.append(request_path.read_text(encoding="utf-8"))
+    return texts
+
+
+def generate_direction_profiles_from_issue_intake(
+    *,
+    workspace: Path,
+    direction: str,
+    client,
+) -> tuple[Path, Path]:
+    direction = canonicalize_direction_slug(direction)
+    issue_texts = _collect_direction_issue_texts(workspace, direction)
+    if not issue_texts:
+        raise ValueError(f"No usable issue intake data available for direction: {direction}")
+    artifacts = client.build_issue_profiles(direction=direction, issue_texts=issue_texts)
+    direction_root = ensure_direction_workspace(workspace, direction)
+    interest_path = direction_root / "profile" / "interest-profile.md"
+    search_path = direction_root / "profile" / "search-profile.json"
+    interest_path.write_text(artifacts.interest_profile_markdown, encoding="utf-8")
+    write_search_profile(search_path, artifacts.search_profile)
+    return interest_path, search_path
 
 
 def sync_issues(

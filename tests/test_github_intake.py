@@ -4,6 +4,7 @@ import subprocess
 
 import pytest
 
+from auto_research.search_profile import load_search_profile
 from auto_research.github_intake import (
     FallbackProfileResult,
     GitHubIssue,
@@ -392,3 +393,54 @@ def test_build_fallback_profile_from_issue_intake_rejects_absolute_direction(tmp
     ensure_workspace(workspace)
     with pytest.raises(ValueError, match="direction"):
         build_fallback_profile_from_issue_intake(workspace, direction="/etc/passwd")
+
+
+def test_generate_direction_profiles_from_issue_intake_writes_interest_and_search_profiles(tmp_path) -> None:
+    from auto_research.github_intake import generate_direction_profiles_from_issue_intake
+
+    workspace = tmp_path / "research-workspace"
+    request_dir = workspace / "issue-intake" / "fl-sys" / "alice" / "requests"
+    request_dir.mkdir(parents=True, exist_ok=True)
+    (request_dir.parent / "summary.md").write_text(
+        "# Issue Intake Summary: fl-sys / alice\n\n## Active Issues\n- #5: FL Sys (OPEN)\n",
+        encoding="utf-8",
+    )
+    (request_dir / "5.md").write_text(
+        "---\nissue_number: 5\ntitle: \"FL Sys\"\n---\n\n# Requirements\nPrefer systems papers.\n",
+        encoding="utf-8",
+    )
+
+    class FakeClient:
+        def build_issue_profiles(self, *, direction: str, issue_texts: list[str]):
+            from auto_research.openai_client import IssueProfileArtifacts
+            from auto_research.search_profile import SearchProfile
+
+            return IssueProfileArtifacts(
+                interest_profile_markdown=(
+                    "# Research Interest Profile\n\n## Core Interests\n- federated learning systems\n\n## Soft Boundaries\n"
+                    "- client orchestration\n\n## Exclusions\n- pure theory\n\n## Current-Phase Bias\n- systems scalability\n\n"
+                    "## Evaluation Heuristics\n- prefer systems papers\n\n## Open Questions\n- how to manage heterogeneity\n"
+                ),
+                search_profile=SearchProfile(
+                    direction="fl-sys",
+                    canonical_topic="federated learning systems",
+                    aliases=["federated learning"],
+                    related_terms=["client orchestration"],
+                    exclude_terms=["pure theory"],
+                    preferred_problem_types=["systems scalability"],
+                    preferred_system_axes=["heterogeneity"],
+                    retrieval_hints=["prefer systems papers"],
+                    seed_queries=["federated learning systems"],
+                    source_preferences=["arxiv", "semantic scholar"],
+                ),
+            )
+
+    interest_path, search_path = generate_direction_profiles_from_issue_intake(
+        workspace=workspace,
+        direction="fl-sys",
+        client=FakeClient(),
+    )
+
+    assert interest_path.exists()
+    assert search_path.exists()
+    assert load_search_profile(search_path).canonical_topic == "federated learning systems"
