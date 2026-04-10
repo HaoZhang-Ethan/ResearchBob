@@ -10,11 +10,20 @@ permissions:
 
 jobs:
   review:
-    runs-on: ubuntu-latest
+    # 只在本仓库 PR 运行（防止 fork 窃取 key）
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    runs-on: self-hosted
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Show runner info
+        run: |
+          echo "Running on:"
+          hostname
+          ip a || ifconfig || true
 
       - name: Get PR diff
         run: |
@@ -24,34 +33,36 @@ jobs:
           wc -c diff.txt
           head -c 20000 diff.txt > short_diff.txt
 
-      - name: Call proxy API
+      - name: Build prompt
         run: |
-          python - <<'PY'
+          python3 - <<'PY'
           import json
-          import os
 
           with open("short_diff.txt", "r", encoding="utf-8", errors="ignore") as f:
               diff = f.read()
 
-          prompt = f"""You are a senior engineer doing pull request review.
+          prompt = f"""You are a senior software engineer doing code review.
 
-Review the following diff and only report real, actionable issues.
+Rules:
+- Only report real issues (no hallucination)
+- Be concise but clear
+- Focus on critical problems
 
-Focus on:
-1. Bugs
-2. Security problems
-3. Performance issues
-4. Risky logic or edge cases
+Check:
+1. Bugs / logic errors
+2. Security issues
+3. Performance risks
+4. Bad practices
 
-Output in markdown with this structure:
+Output format (markdown):
 
 ## Summary
-- one short paragraph
+<short summary>
 
 ## Findings
-- If no real issues, say: No critical issues found.
-- Otherwise use bullets:
-  - [severity] file or area: issue
+- If no issues: "No critical issues found."
+- Else:
+  - [severity] file: issue
     - why it matters
     - suggested fix
 
@@ -68,18 +79,20 @@ Diff:
               json.dump(body, f, ensure_ascii=False)
           PY
 
-          curl -sS http://107.174.93.15:64869/v1/responses \
+      - name: Call AI (your proxy)
+        run: |
+          curl -sS http://100.97.129.55:8080/v1/responses \
             -H "Authorization: Bearer ${{ secrets.OPENAI_API_KEY }}" \
             -H "Content-Type: application/json" \
             --data @request.json \
             -o result.json
 
-          echo "Saved result.json"
+          echo "=== RAW RESPONSE ==="
           cat result.json
 
-      - name: Extract review text
+      - name: Extract AI response
         run: |
-          python - <<'PY'
+          python3 - <<'PY'
           import json
 
           with open("result.json", "r", encoding="utf-8", errors="ignore") as f:
@@ -87,15 +100,18 @@ Diff:
 
           text = None
 
+          # 1. responses API
           if isinstance(data, dict):
               text = data.get("output_text")
 
+              # 2. chat completions
               if not text and "choices" in data:
                   try:
                       text = data["choices"][0]["message"]["content"]
-                  except Exception:
+                  except:
                       pass
 
+              # 3. structured output
               if not text and "output" in data:
                   try:
                       parts = []
@@ -103,12 +119,12 @@ Diff:
                           for c in item.get("content", []):
                               if c.get("type") in ("output_text", "text"):
                                   parts.append(c.get("text", ""))
-                      text = "\n".join(p for p in parts if p)
-                  except Exception:
+                      text = "\n".join(parts)
+                  except:
                       pass
 
           if not text:
-              text = "AI review completed, but I could not parse the model response."
+              text = "AI review completed, but could not parse response."
 
           with open("review.md", "w", encoding="utf-8") as f:
               f.write(text)
