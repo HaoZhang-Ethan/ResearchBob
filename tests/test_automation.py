@@ -786,6 +786,117 @@ def test_run_daily_pipeline_with_explicit_profile_path_does_not_synthesize_issue
     assert not (direction_root / "profile" / "interest-profile.md").exists()
     assert not (direction_root / "profile" / "search-profile.json").exists()
     assert not (direction_root / "pipeline" / "github-finalize.json").exists()
+
+
+def test_run_daily_pipeline_with_explicit_profile_path_does_not_use_direction_search_profile_for_web_retrieval(
+    tmp_path, monkeypatch
+) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    # Stale direction-local search profile exists, but explicit profile override must ignore it.
+    direction_root = workspace / "directions" / "llm-agents"
+    (direction_root / "profile").mkdir(parents=True, exist_ok=True)
+    (direction_root / "profile" / "search-profile.json").write_text(
+        json.dumps(
+            {
+                "direction": "llm-agents",
+                "canonical_topic": "stale",
+                "aliases": [],
+                "related_terms": [],
+                "exclude_terms": [],
+                "preferred_problem_types": [],
+                "preferred_system_axes": [],
+                "retrieval_hints": [],
+                "seed_queries": ["stale query"],
+                "source_preferences": ["arxiv"],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    override_profile = tmp_path / "override-interest-profile.md"
+    override_profile.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    def _load_search_profile_should_not_run(*args, **kwargs):
+        raise AssertionError("explicit profile override must not read direction-local search-profile.json")
+
+    monkeypatch.setattr("auto_research.automation.load_search_profile", _load_search_profile_should_not_run)
+
+    class NoWebClient(FakeLLMClient):
+        def retrieve_web_candidates(self, *, search_profile: SearchProfile, limit: int) -> list[dict[str, object]]:
+            raise AssertionError("explicit profile override must not perform web retrieval")
+
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            profile_path=override_profile,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-09",
+        ),
+        llm_client=NoWebClient(),
+    )
 def test_run_daily_pipeline_infers_direction_from_single_direction_profile(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
     ensure_workspace(workspace)

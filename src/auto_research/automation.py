@@ -862,6 +862,7 @@ def run_hybrid_retrieval(
     profile_path: Path,
     llm_client: OpenAIResponsesClient,
     max_results: int,
+    enable_web: bool = True,
 ) -> HybridRetrievalResult:
     """Retrieve candidates from arXiv intake + optional LLM-backed web retrieval, then dedupe."""
     arxiv_entries = run_intake(workspace=workspace, profile_path=profile_path, max_results=max_results)
@@ -879,25 +880,26 @@ def run_hybrid_retrieval(
     ]
 
     web_candidates: list[RetrievedCandidate] = []
-    search_profile_path = workspace / "profile" / "search-profile.json"
-    if search_profile_path.exists() and search_profile_path.is_file() and not search_profile_path.is_symlink():
-        try:
-            search_profile = load_search_profile(search_profile_path)
-        except Exception as exc:
-            raise ValueError(f"Invalid search-profile.json: {search_profile_path}") from exc
-        if hasattr(llm_client, "retrieve_web_candidates"):
-            for item in llm_client.retrieve_web_candidates(search_profile=search_profile, limit=max_results):
-                web_candidates.append(
-                    RetrievedCandidate(
-                        paper_id=str(item.get("arxiv_id", "")),
-                        title=str(item.get("title", "")),
-                        summary=str(item.get("relevance_reason", "")),
-                        pdf_url=str(item.get("pdf_url", "")),
-                        landing_page_url=str(item.get("landing_page_url", "")),
-                        source_family=str(item.get("source_family", "web")),
-                        discovery_sources=["agent_web"],
+    if enable_web:
+        search_profile_path = workspace / "profile" / "search-profile.json"
+        if search_profile_path.exists() and search_profile_path.is_file() and not search_profile_path.is_symlink():
+            try:
+                search_profile = load_search_profile(search_profile_path)
+            except Exception as exc:
+                raise ValueError(f"Invalid search-profile.json: {search_profile_path}") from exc
+            if hasattr(llm_client, "retrieve_web_candidates"):
+                for item in llm_client.retrieve_web_candidates(search_profile=search_profile, limit=max_results):
+                    web_candidates.append(
+                        RetrievedCandidate(
+                            paper_id=str(item.get("arxiv_id", "")),
+                            title=str(item.get("title", "")),
+                            summary=str(item.get("relevance_reason", "")),
+                            pdf_url=str(item.get("pdf_url", "")),
+                            landing_page_url=str(item.get("landing_page_url", "")),
+                            source_family=str(item.get("source_family", "web")),
+                            discovery_sources=["agent_web"],
+                        )
                     )
-                )
 
     merged = merge_retrieved_candidates(arxiv_candidates=arxiv_candidates, web_candidates=web_candidates)
     return HybridRetrievalResult(candidates=merged, arxiv_entries=arxiv_entries)
@@ -932,6 +934,7 @@ def run_daily_pipeline(
         profile_path=profile_path,
         llm_client=client,
         max_results=config.max_results,
+        enable_web=config.profile_path is None,
     )
     if isinstance(retrieval_result, list):
         retrieved_candidates = retrieval_result
