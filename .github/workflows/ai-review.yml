@@ -10,76 +10,52 @@ permissions:
 
 jobs:
   review:
-    # 只在本仓库 PR 运行（防止 fork 窃取 key）
     if: github.event.pull_request.head.repo.full_name == github.repository
-
     runs-on: self-hosted
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Show runner info
-        run: |
-          echo "Running on:"
-          hostname
-          ip a || ifconfig || true
-
       - name: Get PR diff
         run: |
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > diff.txt
-          echo "Diff size:"
-          wc -c diff.txt
           head -c 20000 diff.txt > short_diff.txt
 
-      - name: Build prompt
+      - name: Build request.json
         run: |
-          python3 - <<'PY'
-          import json
+          python3 << 'EOF'
+import json
 
-          with open("short_diff.txt", "r", encoding="utf-8", errors="ignore") as f:
-              diff = f.read()
+with open("short_diff.txt", "r", encoding="utf-8", errors="ignore") as f:
+    diff = f.read()
 
-          prompt = f"""You are a senior software engineer doing code review.
+prompt = f"""You are a senior engineer.
 
-Rules:
-- Only report real issues (no hallucination)
-- Be concise but clear
-- Focus on critical problems
+Review this PR and find real issues only.
 
 Check:
-1. Bugs / logic errors
-2. Security issues
-3. Performance risks
-4. Bad practices
+- bugs
+- performance
+- security
 
-Output format (markdown):
-
-## Summary
-<short summary>
-
-## Findings
-- If no issues: "No critical issues found."
-- Else:
-  - [severity] file: issue
-    - why it matters
-    - suggested fix
+Return markdown with summary and findings.
 
 Diff:
 {diff}
 """
 
-          body = {
-              "model": "gpt-5.4",
-              "input": prompt
-          }
+body = {
+    "model": "gpt-5.4",
+    "input": prompt
+}
 
-          with open("request.json", "w", encoding="utf-8") as f:
-              json.dump(body, f, ensure_ascii=False)
-          PY
+with open("request.json", "w", encoding="utf-8") as f:
+    json.dump(body, f, ensure_ascii=False)
+EOF
 
-      - name: Call AI (your proxy)
+      - name: Call AI
         run: |
           curl -sS http://100.97.129.55:8080/v1/responses \
             -H "Authorization: Bearer ${{ secrets.OPENAI_API_KEY }}" \
@@ -87,50 +63,36 @@ Diff:
             --data @request.json \
             -o result.json
 
-          echo "=== RAW RESPONSE ==="
+          echo "=== RESULT ==="
           cat result.json
 
-      - name: Extract AI response
+      - name: Extract response
         run: |
-          python3 - <<'PY'
-          import json
+          python3 << 'EOF'
+import json
 
-          with open("result.json", "r", encoding="utf-8", errors="ignore") as f:
-              data = json.load(f)
+with open("result.json", "r", encoding="utf-8", errors="ignore") as f:
+    data = json.load(f)
 
-          text = None
+text = None
 
-          # 1. responses API
-          if isinstance(data, dict):
-              text = data.get("output_text")
+if isinstance(data, dict):
+    text = data.get("output_text")
 
-              # 2. chat completions
-              if not text and "choices" in data:
-                  try:
-                      text = data["choices"][0]["message"]["content"]
-                  except:
-                      pass
+    if not text and "choices" in data:
+        try:
+            text = data["choices"][0]["message"]["content"]
+        except:
+            pass
 
-              # 3. structured output
-              if not text and "output" in data:
-                  try:
-                      parts = []
-                      for item in data["output"]:
-                          for c in item.get("content", []):
-                              if c.get("type") in ("output_text", "text"):
-                                  parts.append(c.get("text", ""))
-                      text = "\n".join(parts)
-                  except:
-                      pass
+if not text:
+    text = "AI review done, but could not parse response."
 
-          if not text:
-              text = "AI review completed, but could not parse response."
+with open("review.md", "w", encoding="utf-8") as f:
+    f.write(text)
+EOF
 
-          with open("review.md", "w", encoding="utf-8") as f:
-              f.write(text)
-          PY
-
-      - name: Comment on PR
+      - name: Comment PR
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
