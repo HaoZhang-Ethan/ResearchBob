@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -1965,6 +1966,81 @@ def test_run_daily_pipeline_clears_manual_pdf_when_local_pdf_present(tmp_path, m
 
     assert '"pdf_status": "manual_required"' not in metadata_text
     assert "Federated Learning Systems at Scale" not in summary_text
+
+
+def test_run_daily_pipeline_resumes_after_manual_pdf_upload(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    direction_root = ensure_direction_workspace(workspace, "fl-sys")
+    paper_dir = direction_root / "papers" / "2501.00001"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    (direction_root / "profile" / "interest-profile.md").write_text(
+        "# Research Interest Profile\n\n## Core Interests\n- federated learning systems\n\n## Soft Boundaries\n- client orchestration\n\n## Exclusions\n- pure theory\n\n## Current-Phase Bias\n- systems scalability\n\n## Evaluation Heuristics\n- prefer systems papers\n\n## Open Questions\n- how to manage heterogeneity\n",
+        encoding="utf-8",
+    )
+    (paper_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "arxiv_id": "2501.00001v1",
+                "title": "Federated Learning Systems at Scale",
+                "summary": "Systems paper.",
+                "pdf_url": "",
+                "landing_page_url": "https://example.test/paper",
+                "discovery_sources": ["agent_web"],
+                "source_family": "semantic_scholar",
+                "pdf_status": "manual_required",
+                "pdf_source": "unknown",
+                "first_seen_at": "2026-04-10T00:00:00Z",
+                "last_checked_at": "2026-04-10T00:00:00Z",
+                "manual_pdf_note": "",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (paper_dir / "state.json").write_text(
+        json.dumps(
+            {
+                "status": "manual_required",
+                "last_attempt_at": "2026-04-10T00:00:00Z",
+                "last_error": "PDF missing",
+                "failure_kind": "missing_pdf",
+                "analysis_version": 1,
+                "source_updated_at": "2026-04-10T00:00:00Z",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (paper_dir / "source.pdf").write_bytes(b"%PDF-1.4\nManual text\n")
+
+    monkeypatch.setattr("auto_research.automation.run_hybrid_retrieval", lambda **kwargs: [])
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    run_daily_pipeline(
+        PipelineConfig(workspace=workspace, direction="fl-sys", label="2026-04-11"),
+        llm_client=FakeLLMClient(),
+    )
+
+    assert (paper_dir / "problem-solution.md").exists()
+    assert '"status": "analysis_done"' in (paper_dir / "state.json").read_text(encoding="utf-8")
+    assert '"pdf_status": "manual_uploaded"' in (paper_dir / "metadata.json").read_text(encoding="utf-8")
 
 
 def test_run_daily_pipeline_preserves_arxiv_published_updated_and_relevance(tmp_path, monkeypatch) -> None:

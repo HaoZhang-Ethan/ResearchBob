@@ -650,7 +650,12 @@ def _write_candidate_metadata(*, workspace: Path, candidate: RetrievedCandidate)
 
     pdf_path = paper_dir / "source.pdf"
     has_local_pdf = pdf_path.exists() and pdf_path.is_file() and not pdf_path.is_symlink()
-    pdf_status = "available" if (candidate.pdf_url.strip() or has_local_pdf) else "manual_required"
+    if candidate.pdf_url.strip():
+        pdf_status = "available"
+    elif has_local_pdf:
+        pdf_status = "manual_uploaded"
+    else:
+        pdf_status = "manual_required"
     merged = {
         **existing,
         "arxiv_id": safe_arxiv_id,
@@ -663,6 +668,114 @@ def _write_candidate_metadata(*, workspace: Path, candidate: RetrievedCandidate)
     }
     metadata_path.write_text(json.dumps(merged, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return metadata_path, pdf_status
+
+
+def _resume_after_manual_pdf_uploads(
+    *,
+    workspace: Path,
+    profile: InterestProfile,
+    client: OpenAIResponsesClient,
+    overwrite_summaries: bool,
+) -> None:
+    papers_root = workspace / "papers"
+    if not papers_root.exists():
+        return
+    if papers_root.is_symlink():
+        raise OSError(f"Refusing to scan symlinked papers directory: {papers_root}")
+
+    for paper_dir in sorted(path for path in papers_root.iterdir() if path.is_dir()):
+        if paper_dir.is_symlink():
+            raise OSError(f"Refusing to use symlinked paper directory: {paper_dir}")
+
+        pdf_path = paper_dir / "source.pdf"
+        if not (pdf_path.exists() and pdf_path.is_file()) or pdf_path.is_symlink():
+            continue
+
+        state_path = paper_dir / "state.json"
+        if state_path.exists() and state_path.is_symlink():
+            raise OSError(f"Refusing to read symlinked state file: {state_path}")
+
+        metadata_path = paper_dir / "metadata.json"
+        if metadata_path.exists() and metadata_path.is_symlink():
+            raise OSError(f"Refusing to read symlinked metadata file: {metadata_path}")
+
+        state: PaperState | None = None
+        if state_path.exists():
+            state = load_paper_state(state_path)
+
+        metadata: dict[str, object] = {}
+        if metadata_path.exists():
+            try:
+                payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+                if isinstance(payload, dict):
+                    metadata = payload
+            except Exception:
+                metadata = {}
+
+        wants_resume = False
+        if state is not None:
+            if state.status == "manual_required":
+                wants_resume = True
+            elif state.status == "needs_retry" and state.failure_kind in {"missing_pdf", "manual_required"}:
+                wants_resume = True
+        if str(metadata.get("pdf_status", "")).strip() == "manual_required":
+            wants_resume = True
+        if not wants_resume:
+            continue
+
+        raw_arxiv_id = str(metadata.get("arxiv_id", "")).strip()
+        try:
+            arxiv_id = validate_arxiv_id(raw_arxiv_id)
+        except ValueError:
+            continue
+
+        now = utc_now_iso()
+        published_at = str(metadata.get("published_at") or metadata.get("first_seen_at") or now)
+        updated_at = str(
+            metadata.get("updated_at") or metadata.get("source_updated_at") or metadata.get("last_checked_at") or now
+        )
+        entry = RegistryEntry(
+            arxiv_id=arxiv_id,
+            title=str(metadata.get("title") or paper_dir.name),
+            summary=str(metadata.get("summary") or ""),
+            pdf_url=str(metadata.get("pdf_url") or ""),
+            published_at=published_at,
+            updated_at=updated_at,
+            relevance_band=str(metadata.get("relevance_band") or "high-match"),
+            source=str(metadata.get("source") or metadata.get("source_family") or "unknown"),
+        )
+
+        # Record that a manual PDF is now present so later runs stop reporting this as blocked.
+        if not entry.pdf_url.strip():
+            merged = {**metadata, "pdf_status": "manual_uploaded"}
+            metadata_path.write_text(
+                json.dumps(merged, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            if state_path.exists():
+                update_paper_state(
+                    state_path,
+                    status="manual_uploaded",
+                    last_attempt_at=now,
+                    last_error="",
+                    failure_kind="",
+                    source_updated_at=entry.updated_at,
+                )
+
+        summary_path = _write_summary_if_needed(
+            workspace=workspace,
+            profile=profile,
+            entry=entry,
+            client=client,
+            overwrite=overwrite_summaries,
+        )
+        _write_detailed_analysis_if_needed(
+            workspace=workspace,
+            profile=profile,
+            entry=entry,
+            client=client,
+            summary_path=summary_path,
+        )
 
 
 def _candidate_to_registry_entry(
@@ -838,6 +951,13 @@ def run_daily_pipeline(
                     client=client,
                     summary_path=summary_path,
                 )
+
+    _resume_after_manual_pdf_uploads(
+        workspace=execution_workspace,
+        profile=profile,
+        client=client,
+        overwrite_summaries=config.overwrite_summaries,
+    )
 
     report_path = compose_report(workspace=execution_workspace, mode="daily", label=label)
     analyses = load_detailed_analysis_texts(execution_workspace, selected_entries)
