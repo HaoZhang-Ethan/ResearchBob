@@ -1,0 +1,17 @@
+{
+  "direction": "fl-sys",
+  "label": "2026-04-10",
+  "repo": "HaoZhang-Ethan/ResearchBob",
+  "report_path": "/tmp/researchbob-run-2026-04-10/directions/fl-sys/reports/daily/2026-04-10.md",
+  "daily_summary_path": "/tmp/researchbob-run-2026-04-10/directions/fl-sys/reports/daily/2026-04-10-summary.md",
+  "used_fallback_profile": true,
+  "consumed_issue_numbers": [
+    5
+  ],
+  "source_keys": [
+    "fl-sys/FLOW2090"
+  ],
+  "status": "completed",
+  "created_at": "2026-04-10T02:19:21Z",
+  "finalized_at": "2026-04-10T02:32:35Z"
+}

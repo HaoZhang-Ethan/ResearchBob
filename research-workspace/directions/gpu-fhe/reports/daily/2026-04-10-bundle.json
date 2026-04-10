@@ -1,0 +1,15 @@
+{
+  "label": "2026-04-10",
+  "selected_papers": [
+    {
+      "paper_id": "1811.00778v3",
+      "title": "Towards the AlexNet Moment for Homomorphic Encryption: HCNN, theFirst Homomorphic CNN on Encrypted Data with GPUs",
+      "paper_dir": "/tmp/researchbob-run-2026-04-10/directions/gpu-fhe/papers/1811.00778",
+      "pdf_path": "/tmp/researchbob-run-2026-04-10/directions/gpu-fhe/papers/1811.00778/source.pdf",
+      "summary_path": "/tmp/researchbob-run-2026-04-10/directions/gpu-fhe/papers/1811.00778/problem-solution.md",
+      "analysis_path": "/tmp/researchbob-run-2026-04-10/directions/gpu-fhe/papers/1811.00778/detailed-analysis.md",
+      "state_path": "/tmp/researchbob-run-2026-04-10/directions/gpu-fhe/papers/1811.00778/state.json"
+    }
+  ],
+  "failed_or_retry": []
+}

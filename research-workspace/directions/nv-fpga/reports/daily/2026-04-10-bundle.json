@@ -1,0 +1,15 @@
+{
+  "label": "2026-04-10",
+  "selected_papers": [
+    {
+      "paper_id": "1908.03898v1",
+      "title": "Digitally Mutating NV-FPGAs into Physically Clone-Resistant Units",
+      "paper_dir": "/tmp/researchbob-run-2026-04-10/directions/nv-fpga/papers/1908.03898",
+      "pdf_path": "/tmp/researchbob-run-2026-04-10/directions/nv-fpga/papers/1908.03898/source.pdf",
+      "summary_path": "/tmp/researchbob-run-2026-04-10/directions/nv-fpga/papers/1908.03898/problem-solution.md",
+      "analysis_path": "/tmp/researchbob-run-2026-04-10/directions/nv-fpga/papers/1908.03898/detailed-analysis.md",
+      "state_path": "/tmp/researchbob-run-2026-04-10/directions/nv-fpga/papers/1908.03898/state.json"
+    }
+  ],
+  "failed_or_retry": []
+}

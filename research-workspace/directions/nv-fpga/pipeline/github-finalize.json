@@ -1,0 +1,17 @@
+{
+  "direction": "nv-fpga",
+  "label": "2026-04-10",
+  "repo": "HaoZhang-Ethan/ResearchBob",
+  "report_path": "/tmp/researchbob-run-2026-04-10/directions/nv-fpga/reports/daily/2026-04-10.md",
+  "daily_summary_path": "/tmp/researchbob-run-2026-04-10/directions/nv-fpga/reports/daily/2026-04-10-summary.md",
+  "used_fallback_profile": true,
+  "consumed_issue_numbers": [
+    3
+  ],
+  "source_keys": [
+    "nv-fpga/HaoZhang-Ethan"
+  ],
+  "status": "completed",
+  "created_at": "2026-04-10T02:22:12Z",
+  "finalized_at": "2026-04-10T02:34:03Z"
+}
