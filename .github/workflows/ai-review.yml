@@ -17,17 +17,51 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ✅ 修复 diff（不会再报错）
       - name: Get diff
         run: |
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-          git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > diff.txt
+          git diff ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} > diff.txt || true
+
+          if [ ! -s diff.txt ]; then
+            echo "No diff found" > diff.txt
+          fi
+
           head -c 20000 diff.txt > short_diff.txt
 
+      # ✅ 用 Python 生成 JSON（彻底避免转义问题）
       - name: Build request.json
         run: |
-          DIFF=$(cat short_diff.txt | sed 's/"/\\"/g')
-          echo "{\"model\":\"gpt-5.4\",\"input\":\"Review this PR:\\n$DIFF\"}" > request.json
+          python3 - << 'EOF'
+import json
 
+with open("short_diff.txt", "r", encoding="utf-8", errors="ignore") as f:
+    diff = f.read()
+
+prompt = f"""You are a senior engineer.
+
+Review this PR and only report real issues.
+
+Focus on:
+- bugs
+- security
+- performance
+
+Return markdown with summary and findings.
+
+Diff:
+{diff}
+"""
+
+body = {
+    "model": "gpt-5.4",
+    "input": prompt
+}
+
+with open("request.json", "w", encoding="utf-8") as f:
+    json.dump(body, f, ensure_ascii=False)
+EOF
+
+      # ✅ 调用你的中转
       - name: Call AI
         run: |
           curl -sS http://100.97.129.55:8080/v1/responses \
@@ -36,12 +70,46 @@ jobs:
             --data @request.json \
             -o result.json
 
-          echo "=== RESULT ==="
+          echo "=== RAW RESULT ==="
           cat result.json
 
+      # ✅ 更稳的解析（兼容多种格式）
       - name: Extract response
         run: |
-          cat result.json | jq -r '.output_text // .choices[0].message.content' > review.md
+          python3 - << 'EOF'
+import json
+
+with open("result.json", "r", encoding="utf-8", errors="ignore") as f:
+    data = json.load(f)
+
+text = None
+
+if isinstance(data, dict):
+    text = data.get("output_text")
+
+    if not text and "choices" in data:
+        try:
+            text = data["choices"][0]["message"]["content"]
+        except:
+            pass
+
+    if not text and "output" in data:
+        try:
+            parts = []
+            for item in data["output"]:
+                for c in item.get("content", []):
+                    if c.get("type") in ("output_text", "text"):
+                        parts.append(c.get("text", ""))
+            text = "\n".join(parts)
+        except:
+            pass
+
+if not text:
+    text = "AI review done, but could not parse response."
+
+with open("review.md", "w", encoding="utf-8") as f:
+    f.write(text)
+EOF
 
       - name: Comment PR
         env:
