@@ -2,51 +2,249 @@ name: AI PR Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
 permissions:
   contents: read
   pull-requests: write
+  issues: write
+
+concurrency:
+  group: ai-pr-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   review:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        !github.event.pull_request.draft
+      )
     runs-on: self-hosted
+    timeout-minutes: 15
+
+    env:
+      AI_BASE_URL: http://100.97.129.55:8080
+      AI_MODEL: gpt-5.4
+      COMMENT_MARKER: "<!-- ai-pr-review-bot -->"
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Prepare PR context
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
 
-      - name: Get diff
-        run: |
-          git diff ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} > diff.txt || true
-          if [ ! -s diff.txt ]; then
-            echo "No diff" > diff.txt
-          fi
-          head -c 20000 diff.txt > short_diff.txt
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
 
-      - name: Build request.json
-        run: |
-          DIFF=$(cat short_diff.txt | sed 's/"/\\"/g' | tr '\n' ' ')
-          echo "{\"model\":\"gpt-5.4\",\"input\":\"Review this PR: $DIFF\"}" > request.json
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              {
+                owner,
+                repo,
+                pull_number: pr.number,
+                per_page: 100
+              }
+            );
+
+            const maxPatchCharsPerFile = 3500;
+            const maxTotalChars = 60000;
+            let used = 0;
+            const selectedFiles = [];
+
+            for (const f of files) {
+              let patch = f.patch || '';
+              if (patch.length > maxPatchCharsPerFile) {
+                patch = patch.slice(0, maxPatchCharsPerFile) + '\n... [patch truncated]';
+              }
+
+              const entry = {
+                filename: f.filename,
+                status: f.status,
+                additions: f.additions,
+                deletions: f.deletions,
+                changes: f.changes,
+                patch: patch || '[no textual patch available]'
+              };
+
+              const size = JSON.stringify(entry).length;
+
+              if (used + size > maxTotalChars) {
+                selectedFiles.push({
+                  filename: f.filename,
+                  status: f.status,
+                  note: '[omitted because total diff budget was reached]'
+                });
+                continue;
+              }
+
+              used += size;
+              selectedFiles.push(entry);
+            }
+
+            const payload = {
+              pr: {
+                number: pr.number,
+                title: pr.title,
+                body: pr.body || '',
+                base_ref: pr.base.ref,
+                head_ref: pr.head.ref,
+                changed_files: pr.changed_files,
+                additions: pr.additions,
+                deletions: pr.deletions
+              },
+              files: selectedFiles
+            };
+
+            fs.writeFileSync('pr_context.json', JSON.stringify(payload, null, 2), 'utf8');
+            core.notice(`Prepared context for ${files.length} changed files.`);
 
       - name: Call AI
-        run: |
-          curl -sS http://100.97.129.55:8080/v1/responses \
-            -H "Authorization: Bearer ${{ secrets.OPENAI_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            --data @request.json \
-            -o result.json
-
-          echo "=== RESULT ==="
-          cat result.json
-
-      - name: Extract response
-        run: |
-          jq -r '.output_text // .choices[0].message.content // "No response"' result.json > review.md
-
-      - name: Comment PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body-file review.md
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        with:
+          script: |
+            const fs = require('fs');
+
+            const prContext = fs.readFileSync('pr_context.json', 'utf8');
+
+            const prompt = [
+              'You are a meticulous senior software engineer reviewing a pull request.',
+              '',
+              'Review principles:',
+              '- Only report real, actionable issues.',
+              '- Prioritize correctness, security, performance, reliability, and maintainability.',
+              '- Ignore trivial style nits unless they hide a bug.',
+              '- If there are no meaningful issues, say so clearly.',
+              '',
+              'Output format in Markdown:',
+              '## Summary',
+              '<2-4 sentences>',
+              '',
+              '## Findings',
+              '- If there are no meaningful issues, write exactly:',
+              '  - No critical issues found.',
+              '- Otherwise, for each issue use:',
+              '  - [high|medium|low] `path/to/file`: short title',
+              '    - Why it matters',
+              '    - Suggested fix',
+              '',
+              'Pull request context:',
+              prContext
+            ].join('\n');
+
+            const url = `${process.env.AI_BASE_URL}/v1/responses`;
+
+            const resp = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                model: process.env.AI_MODEL,
+                input: prompt
+              })
+            });
+
+            const rawText = await resp.text();
+            fs.writeFileSync('result.json', rawText, 'utf8');
+
+            if (!resp.ok) {
+              core.setFailed(`AI request failed: HTTP ${resp.status}\n${rawText.slice(0, 1500)}`);
+              return;
+            }
+
+            let data;
+            try {
+              data = JSON.parse(rawText);
+            } catch (e) {
+              core.setFailed(`AI returned non-JSON response:\n${rawText.slice(0, 1500)}`);
+              return;
+            }
+
+            let review = data.output_text;
+
+            if (!review && Array.isArray(data.output)) {
+              const parts = [];
+              for (const item of data.output) {
+                for (const c of (item.content || [])) {
+                  if (c.type === 'output_text' || c.type === 'text') {
+                    parts.push(c.text || '');
+                  }
+                }
+              }
+              review = parts.join('\n').trim();
+            }
+
+            if (!review && Array.isArray(data.choices)) {
+              review = data.choices?.[0]?.message?.content || '';
+            }
+
+            if (!review) {
+              review = '## Summary\nCould not parse model response.\n\n## Findings\n- No critical issues found.';
+            }
+
+            fs.writeFileSync('review.md', review, 'utf8');
+            core.notice('AI review generated successfully.');
+
+      - name: Upsert PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const review = fs.readFileSync('review.md', 'utf8').trim();
+            const marker = process.env.COMMENT_MARKER;
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+
+            const body =
+              `${marker}
+## AI PR Review
+
+${review}
+
+---
+_Updated automatically by workflow run [#${process.env.GITHUB_RUN_ID}](${runUrl})._`;
+
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner,
+                repo,
+                issue_number,
+                per_page: 100
+              }
+            );
+
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body
+              });
+              core.notice(`Updated existing AI review comment: ${existing.id}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body
+              });
+              core.notice('Created new AI review comment.');
+            }
