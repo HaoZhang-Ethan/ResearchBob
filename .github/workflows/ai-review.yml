@@ -14,10 +14,10 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Get PR diff
+      - name: Get diff
         run: |
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > diff.txt
@@ -25,35 +25,8 @@ jobs:
 
       - name: Build request.json
         run: |
-          python3 << 'EOF'
-import json
-
-with open("short_diff.txt", "r", encoding="utf-8", errors="ignore") as f:
-    diff = f.read()
-
-prompt = f"""You are a senior engineer.
-
-Review this PR and find real issues only.
-
-Check:
-- bugs
-- performance
-- security
-
-Return markdown with summary and findings.
-
-Diff:
-{diff}
-"""
-
-body = {
-    "model": "gpt-5.4",
-    "input": prompt
-}
-
-with open("request.json", "w", encoding="utf-8") as f:
-    json.dump(body, f, ensure_ascii=False)
-EOF
+          DIFF=$(cat short_diff.txt | sed 's/"/\\"/g')
+          echo "{\"model\":\"gpt-5.4\",\"input\":\"Review this PR:\\n$DIFF\"}" > request.json
 
       - name: Call AI
         run: |
@@ -68,29 +41,7 @@ EOF
 
       - name: Extract response
         run: |
-          python3 << 'EOF'
-import json
-
-with open("result.json", "r", encoding="utf-8", errors="ignore") as f:
-    data = json.load(f)
-
-text = None
-
-if isinstance(data, dict):
-    text = data.get("output_text")
-
-    if not text and "choices" in data:
-        try:
-            text = data["choices"][0]["message"]["content"]
-        except:
-            pass
-
-if not text:
-    text = "AI review done, but could not parse response."
-
-with open("review.md", "w", encoding="utf-8") as f:
-    f.write(text)
-EOF
+          cat result.json | jq -r '.output_text // .choices[0].message.content' > review.md
 
       - name: Comment PR
         env:
