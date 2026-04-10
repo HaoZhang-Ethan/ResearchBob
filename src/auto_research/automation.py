@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -19,12 +20,14 @@ from auto_research.github_intake import (
     discover_github_repo,
 )
 from auto_research.intake import run_intake
-from auto_research.models import InterestProfile, RegistryEntry
+from auto_research.models import InterestProfile, RegistryEntry, validate_arxiv_id
 from auto_research.openai_client import OpenAIResponsesClient, SummaryArtifact
 from auto_research.pdf import download_pdf
 from auto_research.profile import load_interest_profile, validate_interest_profile_text
 from auto_research.report import compose_report
+from auto_research.retrieval import RetrievedCandidate, merge_retrieved_candidates
 from auto_research.ris import export_ris
+from auto_research.search_profile import load_search_profile
 from auto_research.selection import RankedCandidate, prefilter_candidates
 from auto_research.summary import load_detailed_analysis_texts, write_daily_summary
 from auto_research.state import PaperState, load_paper_state, update_paper_state, utc_now_iso
@@ -599,6 +602,126 @@ def finalize_github(workspace: Path, direction: str | None = None) -> dict[str, 
     return state
 
 
+_VERSION_SUFFIX = re.compile(r"^(?P<base>.+)v(?P<version>\d+)$")
+
+
+def _stable_arxiv_id(arxiv_id: str) -> str:
+    match = _VERSION_SUFFIX.match(arxiv_id)
+    return match.group("base") if match else arxiv_id
+
+
+def _write_candidate_metadata(*, workspace: Path, candidate: RetrievedCandidate) -> tuple[Path | None, str]:
+    """Persist lightweight metadata for a retrieved candidate.
+
+    Returns (metadata_path, pdf_status). metadata_path is None when the paper_id is invalid.
+    """
+    raw_paper_id = candidate.paper_id.strip()
+    try:
+        safe_arxiv_id = validate_arxiv_id(raw_paper_id)
+    except ValueError:
+        return None, "unknown"
+
+    stable_id = _stable_arxiv_id(safe_arxiv_id)
+    paper_dir = workspace / "papers" / stable_id.replace("/", "_")
+    if paper_dir.is_symlink():
+        raise OSError(f"Refusing to use symlinked paper directory: {paper_dir}")
+    paper_dir.mkdir(parents=True, exist_ok=True)
+
+    metadata_path = paper_dir / "metadata.json"
+    if metadata_path.is_symlink():
+        raise OSError(f"Refusing to write symlinked metadata file: {metadata_path}")
+    if metadata_path.exists() and not metadata_path.is_file():
+        raise OSError(f"Refusing to overwrite non-regular metadata file: {metadata_path}")
+
+    existing: dict[str, object] = {}
+    if metadata_path.exists():
+        try:
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                existing = payload
+        except Exception:
+            existing = {}
+
+    pdf_status = "available" if candidate.pdf_url.strip() else "manual_required"
+    merged = {
+        **existing,
+        "arxiv_id": safe_arxiv_id,
+        "title": candidate.title,
+        "pdf_url": candidate.pdf_url,
+        "pdf_status": pdf_status,
+        "landing_page_url": candidate.landing_page_url,
+        "source_family": candidate.source_family,
+        "discovery_sources": list(candidate.discovery_sources),
+    }
+    metadata_path.write_text(json.dumps(merged, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return metadata_path, pdf_status
+
+
+def _candidate_to_registry_entry(candidate: RetrievedCandidate) -> RegistryEntry | None:
+    raw_paper_id = candidate.paper_id.strip()
+    try:
+        safe_arxiv_id = validate_arxiv_id(raw_paper_id)
+    except ValueError:
+        return None
+    now = utc_now_iso()
+    return RegistryEntry(
+        arxiv_id=safe_arxiv_id,
+        title=candidate.title,
+        summary=candidate.summary,
+        pdf_url=candidate.pdf_url,
+        published_at=now,
+        updated_at=now,
+        relevance_band="high-match",
+        source=candidate.source_family or "unknown",
+    )
+
+
+def run_hybrid_retrieval(
+    *,
+    workspace: Path,
+    profile_path: Path,
+    llm_client: OpenAIResponsesClient,
+    max_results: int,
+) -> list[RetrievedCandidate]:
+    """Retrieve candidates from arXiv intake + optional LLM-backed web retrieval, then dedupe."""
+    arxiv_entries = run_intake(workspace=workspace, profile_path=profile_path, max_results=max_results)
+    arxiv_candidates = [
+        RetrievedCandidate(
+            paper_id=entry.arxiv_id,
+            title=entry.title,
+            summary=entry.summary,
+            pdf_url=entry.pdf_url,
+            landing_page_url=f"https://arxiv.org/abs/{entry.arxiv_id}",
+            source_family="arxiv",
+            discovery_sources=["arxiv_api"],
+        )
+        for entry in arxiv_entries
+    ]
+
+    web_candidates: list[RetrievedCandidate] = []
+    search_profile_path = workspace / "profile" / "search-profile.json"
+    if search_profile_path.exists() and search_profile_path.is_file() and not search_profile_path.is_symlink():
+        try:
+            search_profile = load_search_profile(search_profile_path)
+        except Exception:
+            search_profile = None
+        if search_profile is not None and hasattr(llm_client, "retrieve_web_candidates"):
+            for item in llm_client.retrieve_web_candidates(search_profile=search_profile, limit=max_results):
+                web_candidates.append(
+                    RetrievedCandidate(
+                        paper_id=str(item.get("arxiv_id", "")),
+                        title=str(item.get("title", "")),
+                        summary=str(item.get("relevance_reason", "")),
+                        pdf_url=str(item.get("pdf_url", "")),
+                        landing_page_url=str(item.get("landing_page_url", "")),
+                        source_family=str(item.get("source_family", "web")),
+                        discovery_sources=["agent_web"],
+                    )
+                )
+
+    return merge_retrieved_candidates(arxiv_candidates=arxiv_candidates, web_candidates=web_candidates)
+
+
 def run_daily_pipeline(
     config: PipelineConfig,
     *,
@@ -617,16 +740,29 @@ def run_daily_pipeline(
     )
     profile = load_interest_profile(profile_path)
 
-    intake_entries = run_intake(
-        workspace=execution_workspace, profile_path=profile_path, max_results=config.max_results
+    client = llm_client or OpenAIResponsesClient(model=config.model)
+    retrieved_candidates = run_hybrid_retrieval(
+        workspace=execution_workspace,
+        profile_path=profile_path,
+        llm_client=client,
+        max_results=config.max_results,
     )
-    candidates = prefilter_candidates(profile, intake_entries, config.prefilter_limit)
+    manual_required_titles: list[str] = []
+    registry_entries: list[RegistryEntry] = []
+    for candidate in retrieved_candidates:
+        _, pdf_status = _write_candidate_metadata(workspace=execution_workspace, candidate=candidate)
+        if pdf_status == "manual_required":
+            manual_required_titles.append(candidate.title)
+        entry = _candidate_to_registry_entry(candidate)
+        if entry is not None:
+            registry_entries.append(entry)
+
+    candidates = prefilter_candidates(profile, registry_entries, config.prefilter_limit)
 
     selected_entries: list[RegistryEntry]
     if not candidates:
         selected_entries = []
     else:
-        client = llm_client or OpenAIResponsesClient(model=config.model)
         ranked = client.rank_candidates(profile=profile, candidates=candidates, top_k=config.top_k)
         selected_entries = _selected_entries_from_ranking(ranked=ranked, entries=candidates)
 
@@ -638,6 +774,17 @@ def run_daily_pipeline(
                 client=client,
                 overwrite=config.overwrite_summaries,
             )
+            if not entry.pdf_url.strip():
+                update_paper_state(
+                    _state_path(execution_workspace, entry),
+                    status="needs_retry",
+                    last_attempt_at=utc_now_iso(),
+                    last_error="PDF URL missing; manual download required",
+                    failure_kind="manual_required",
+                    source_updated_at=entry.updated_at,
+                )
+                continue
+
             pdf_path = _download_pdf_if_needed(workspace=execution_workspace, entry=entry)
             if pdf_path is not None:
                 _write_detailed_analysis_if_needed(
@@ -657,6 +804,7 @@ def run_daily_pipeline(
         analyses=analyses,
         failed_items=failed_items,
     )
+    daily_summary_payload["needs_manual_pdf"] = manual_required_titles
     daily_summary_path = write_daily_summary(
         path=execution_workspace / "reports" / "daily" / f"{label}-summary.md",
         label=label,

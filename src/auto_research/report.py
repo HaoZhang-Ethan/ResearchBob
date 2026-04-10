@@ -18,6 +18,7 @@ SECTION_TITLES = {
     "follow-up": "Promising Problems, Weak Solutions",
     "skip": "Papers Likely Safe to Skip",
     "manual-review": "Papers Requiring Manual Verification",
+    "needs-manual-pdf": "Needs Manual PDF",
 }
 ALLOWED_MODES = {"daily", "manual"}
 VALID_LABEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -114,6 +115,61 @@ def _load_metadata(paper_dir: Path) -> tuple[str | None, str | None, str | None]
         title = None
 
     return arxiv_id, title, None
+
+
+def _load_metadata_payload(paper_dir: Path) -> tuple[dict[str, object] | None, str | None]:
+    metadata_path = paper_dir / METADATA_NAME
+    if metadata_path.is_symlink():
+        return None, f"Refusing to read symlinked {METADATA_NAME}"
+    if not metadata_path.exists():
+        return None, None
+    if not metadata_path.is_file():
+        return None, f"Refusing to read non-regular {METADATA_NAME}"
+
+    try:
+        payload_raw = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return None, f"Unable to read {METADATA_NAME}: {exc}"
+    except UnicodeError:
+        return None, f"Unable to decode {METADATA_NAME} as UTF-8"
+    except json.JSONDecodeError as exc:
+        return None, f"Invalid {METADATA_NAME}: {exc.msg}"
+
+    if not isinstance(payload_raw, dict):
+        return None, f"Invalid {METADATA_NAME}: expected JSON object"
+
+    return payload_raw, None
+
+
+def _load_manual_pdf_entry(paper_dir: Path) -> dict[str, str] | None:
+    payload, error = _load_metadata_payload(paper_dir)
+    if error is not None or payload is None:
+        return None
+
+    pdf_status = payload.get("pdf_status")
+    if pdf_status != "manual_required":
+        return None
+
+    arxiv_id = payload.get("arxiv_id")
+    if not isinstance(arxiv_id, str) or not arxiv_id:
+        return None
+
+    title = payload.get("title")
+    if not isinstance(title, str) or not title.strip():
+        title = arxiv_id
+
+    landing_page_url = payload.get("landing_page_url")
+    note = "Manual PDF required"
+    if isinstance(landing_page_url, str) and landing_page_url.strip():
+        note = f"{note} - {landing_page_url.strip()}"
+
+    return {
+        "paper_id": arxiv_id,
+        "title": title,
+        "confidence": "unknown",
+        "relevance_band": "unknown",
+        "note": note,
+    }
 
 
 def _manual_review_details(
@@ -250,8 +306,12 @@ def compose_report(workspace: Path, mode: str, label: str) -> Path:
         for opportunity_label, entry in _load_conflict_entries(paper_dir):
             grouped[opportunity_label].append(entry)
 
+        manual_pdf_entry = _load_manual_pdf_entry(paper_dir)
+        if manual_pdf_entry is not None:
+            grouped["needs-manual-pdf"].append(manual_pdf_entry)
+
     lines = [f"# Research Scout Report: {safe_label}", ""]
-    for label_key in ("read-now", "follow-up", "skip", "manual-review"):
+    for label_key in ("read-now", "follow-up", "skip", "manual-review", "needs-manual-pdf"):
         lines.append(f"## {SECTION_TITLES[label_key]}")
         entries = grouped.get(label_key, [])
         if not entries:

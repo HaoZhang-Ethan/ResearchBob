@@ -42,6 +42,12 @@ def render_daily_summary_markdown(*, label: str, payload: dict[str, object]) -> 
         lines.extend(f"- {item}" for item in themes)
     else:
         lines.append("- None")
+    lines.extend(["", "## Needs Manual PDF"])
+    manual_pdf = payload.get("needs_manual_pdf", [])
+    if manual_pdf:
+        lines.extend(f"- {item}" for item in manual_pdf)
+    else:
+        lines.append("- None")
     lines.extend(["", "## Failed / Needs Retry"])
     failed = payload["failed_or_retry"]
     if failed:

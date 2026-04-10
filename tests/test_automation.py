@@ -7,6 +7,8 @@ import pytest
 from auto_research.automation import PipelineConfig, finalize_github, run_daily_pipeline
 from auto_research.models import RegistryEntry
 from auto_research.openai_client import OpenAIResponsesClient, SummaryArtifact
+from auto_research.retrieval import RetrievedCandidate
+from auto_research.search_profile import SearchProfile, write_search_profile
 from auto_research.workspace import ensure_direction_workspace, ensure_workspace
 
 
@@ -1835,3 +1837,56 @@ def test_run_daily_pipeline_backfills_manual_pdf(tmp_path, monkeypatch) -> None:
 
     assert (paper_dir / "detailed-analysis.md").exists()
     assert result.longterm_summary_path.exists()
+
+
+def test_run_daily_pipeline_preserves_candidate_when_pdf_missing(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    direction_root = workspace / "directions" / "fl-sys"
+    ensure_direction_workspace(workspace, "fl-sys")
+    (direction_root / "profile" / "interest-profile.md").write_text(
+        "# Research Interest Profile\n\n## Core Interests\n- federated learning systems\n\n## Soft Boundaries\n- client orchestration\n\n## Exclusions\n- pure theory\n\n## Current-Phase Bias\n- systems scalability\n\n## Evaluation Heuristics\n- prefer systems papers\n\n## Open Questions\n- how to manage heterogeneity\n",
+        encoding="utf-8",
+    )
+    write_search_profile(
+        direction_root / "profile" / "search-profile.json",
+        SearchProfile(
+            direction="fl-sys",
+            canonical_topic="federated learning systems",
+            aliases=["federated learning"],
+            related_terms=["client orchestration"],
+            exclude_terms=["pure theory"],
+            preferred_problem_types=["systems scalability"],
+            preferred_system_axes=["heterogeneity"],
+            retrieval_hints=["prefer systems papers"],
+            seed_queries=["federated learning systems"],
+            source_preferences=["arxiv", "semantic scholar"],
+        ),
+    )
+
+    candidate = RetrievedCandidate(
+        paper_id="2501.00001v1",
+        title="Federated Learning Systems at Scale",
+        summary="Systems paper.",
+        pdf_url="",
+        landing_page_url="https://example.test/paper",
+        source_family="semantic_scholar",
+        discovery_sources=["agent_web"],
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_hybrid_retrieval", lambda **kwargs: [candidate])
+
+    run_daily_pipeline(
+        PipelineConfig(workspace=workspace, direction="fl-sys", label="2026-04-10"),
+        llm_client=FakeLLMClient(),
+    )
+
+    metadata_text = (direction_root / "papers" / "2501.00001" / "metadata.json").read_text(
+        encoding="utf-8"
+    )
+    summary_text = (direction_root / "reports" / "daily" / "2026-04-10-summary.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert '\"pdf_status\": \"manual_required\"' in metadata_text
+    assert "Needs Manual PDF" in summary_text
+    assert "Federated Learning Systems at Scale" in summary_text
