@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from auto_research.profile import validate_interest_profile_text
 from auto_research.search_profile import write_search_profile
 from auto_research.workspace import ensure_workspace
 from auto_research.workspace import ensure_direction_workspace
@@ -416,10 +417,20 @@ def generate_direction_profiles_from_issue_intake(
     issue_texts = _collect_direction_issue_texts(workspace, direction)
     if not issue_texts:
         raise ValueError(f"No usable issue intake data available for direction: {direction}")
-    artifacts = client.build_issue_profiles(direction=direction, issue_texts=issue_texts)
     direction_root = ensure_direction_workspace(workspace, direction)
     interest_path = direction_root / "profile" / "interest-profile.md"
     search_path = direction_root / "profile" / "search-profile.json"
+
+    if interest_path.is_symlink():
+        raise OSError(f"Refusing to write symlinked interest profile path: {interest_path}")
+    if search_path.is_symlink():
+        raise OSError(f"Refusing to write symlinked search profile path: {search_path}")
+
+    artifacts = client.build_issue_profiles(direction=direction, issue_texts=issue_texts)
+    errors = validate_interest_profile_text(artifacts.interest_profile_markdown)
+    if errors:
+        raise ValueError("\n".join(errors))
+
     interest_path.write_text(artifacts.interest_profile_markdown, encoding="utf-8")
     write_search_profile(search_path, artifacts.search_profile)
     return interest_path, search_path
