@@ -2073,3 +2073,108 @@ def test_run_hybrid_retrieval_raises_on_invalid_search_profile(tmp_path, monkeyp
             llm_client=FakeLLMClient(),
             max_results=3,
         )
+
+
+def test_run_daily_pipeline_prefers_enriched_pdf_url_over_arxiv_fallback(tmp_path, monkeypatch) -> None:
+    from auto_research.automation import HybridRetrievalResult
+
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    direction_root = workspace / "directions" / "llm-agents"
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+
+    arxiv_entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-25T08:54:53Z",
+        relevance_band="adjacent",
+        source="arxiv",
+    )
+    merged_candidate = RetrievedCandidate(
+        paper_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Web says PDF exists.",
+        pdf_url="https://example.test/paper.pdf",
+        landing_page_url="https://example.test/paper",
+        source_family="arxiv",
+        discovery_sources=["arxiv_api", "agent_web"],
+    )
+
+    monkeypatch.setattr(
+        "auto_research.automation.run_hybrid_retrieval",
+        lambda **kwargs: HybridRetrievalResult(
+            candidates=[merged_candidate],
+            arxiv_entries=[arxiv_entry],
+        ),
+    )
+
+    downloaded: list[str] = []
+
+    def fake_download_pdf(*, client, url: str, destination: Path) -> None:
+        downloaded.append(url)
+        destination.write_bytes(b"%PDF-1.4\nExample text\n")
+
+    monkeypatch.setattr("auto_research.automation.download_pdf", fake_download_pdf)
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-09",
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    assert downloaded == ["https://example.test/paper.pdf"]
+    paper_dir = direction_root / "papers" / "2603.23566"
+    assert (paper_dir / "source.pdf").exists()
+    state_text = (paper_dir / "state.json").read_text(encoding="utf-8")
+    assert "needs_retry" not in state_text

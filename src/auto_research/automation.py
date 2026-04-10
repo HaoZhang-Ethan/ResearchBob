@@ -671,7 +671,19 @@ def _candidate_to_registry_entry(
     fallback: RegistryEntry | None = None,
 ) -> RegistryEntry | None:
     if fallback is not None:
-        return fallback
+        pdf_url = candidate.pdf_url.strip() or fallback.pdf_url
+        title = candidate.title.strip() or fallback.title
+        summary = candidate.summary.strip() or fallback.summary
+        return RegistryEntry(
+            arxiv_id=fallback.arxiv_id,
+            title=title,
+            summary=summary,
+            pdf_url=pdf_url,
+            published_at=fallback.published_at,
+            updated_at=fallback.updated_at,
+            relevance_band=fallback.relevance_band,
+            source=fallback.source,
+        )
     raw_paper_id = candidate.paper_id.strip()
     try:
         safe_arxiv_id = validate_arxiv_id(raw_paper_id)
