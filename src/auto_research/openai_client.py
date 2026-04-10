@@ -586,4 +586,10 @@ class OpenAIResponsesClient:
             schema=schema,
             tools=[{"type": "web_search"}],
         )
-        return list(data["candidates"])
+        candidates = list(data["candidates"])
+        for item in candidates:
+            arxiv_id = str(item.get("arxiv_id", ""))
+            if not arxiv_id.strip():
+                title = str(item.get("title", "")).strip()
+                raise ValueError(f"Web retrieval candidate returned blank arxiv_id (title={title!r})")
+        return candidates

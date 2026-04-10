@@ -18,6 +18,7 @@ from auto_research.github_intake import (
     comment_on_issue,
     discover_issue_directions,
     discover_github_repo,
+    generate_direction_profiles_from_issue_intake,
 )
 from auto_research.intake import run_intake
 from auto_research.models import InterestProfile, RegistryEntry, validate_arxiv_id
@@ -398,23 +399,33 @@ def _ensure_profile_exists_with_metadata(
     execution_workspace: Path,
     direction: str,
     profile_path: Path,
+    llm_client: OpenAIResponsesClient,
 ) -> tuple[Path, object | None]:
+    direction_interest_path = execution_workspace / "profile" / "interest-profile.md"
+    direction_search_path = execution_workspace / "profile" / "search-profile.json"
+
+    needs_direction_profiles = not direction_interest_path.exists() or not direction_search_path.exists()
+    has_issue_intake = direction in discover_issue_directions(workspace)
+    if needs_direction_profiles and has_issue_intake:
+        # Synthesize both profiles from issue intake so hybrid retrieval (arXiv + web) can run without
+        # manual profile/search-profile setup.
+        generate_direction_profiles_from_issue_intake(
+            workspace=workspace,
+            direction=direction,
+            client=llm_client,
+        )
+
+        repo = discover_github_repo()
+        fallback = build_fallback_profile_from_issue_intake(workspace, direction, repo=repo)
+        return (profile_path if profile_path.exists() else direction_interest_path), fallback
+
     if profile_path.exists():
         return profile_path, None
-
-    if profile_path.is_symlink():
-        raise OSError(f"Refusing to write symlinked profile file: {profile_path}")
-
-    repo = discover_github_repo()
-    fallback = build_fallback_profile_from_issue_intake(workspace, direction, repo=repo)
-    errors = validate_interest_profile_text(fallback.markdown)
-    if errors:
-        raise ValueError(
-            "Generated invalid fallback interest profile: " + "; ".join(errors)
-        )
-    profile_path.parent.mkdir(parents=True, exist_ok=True)
-    profile_path.write_text(fallback.markdown, encoding="utf-8")
-    return profile_path, fallback
+    if direction_interest_path.exists():
+        return direction_interest_path, None
+    raise ValueError(
+        f"Missing interest profile and no usable issue intake data available for direction: {direction}"
+    )
 
 
 def _infer_direction_from_profile_path(workspace: Path, profile_path: Path | None) -> str | None:
@@ -719,8 +730,6 @@ def _resume_after_manual_pdf_uploads(
                 wants_resume = True
             elif state.status == "needs_retry" and state.failure_kind in {"missing_pdf", "manual_required"}:
                 wants_resume = True
-        if str(metadata.get("pdf_status", "")).strip() == "manual_required":
-            wants_resume = True
         if not wants_resume:
             continue
 
@@ -875,15 +884,15 @@ def run_daily_pipeline(
     execution_workspace = ensure_direction_workspace(shared_workspace, direction)
     label = config.label or _default_label()
     profile_path = _resolve_profile_path(shared_workspace, execution_workspace, config.profile_path)
+    client = llm_client or OpenAIResponsesClient(model=config.model)
     profile_path, fallback = _ensure_profile_exists_with_metadata(
         shared_workspace,
         execution_workspace,
         direction,
         profile_path,
+        llm_client=client,
     )
     profile = load_interest_profile(profile_path)
-
-    client = llm_client or OpenAIResponsesClient(model=config.model)
     retrieval_result = run_hybrid_retrieval(
         workspace=execution_workspace,
         profile_path=profile_path,

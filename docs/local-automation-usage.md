@@ -42,7 +42,7 @@ GitHub finalize state is also direction-local under:
 research-workspace/directions/<direction>/pipeline/
 ```
 
-If `research-workspace/directions/<direction>/profile/interest-profile.md` is missing, `daily-pipeline --direction <direction>` will attempt to synthesize it from `research-workspace/issue-intake/<direction>/` before the run continues.
+If either `research-workspace/directions/<direction>/profile/interest-profile.md` or `research-workspace/directions/<direction>/profile/search-profile.json` is missing, `daily-pipeline --direction <direction>` will attempt to synthesize both from `research-workspace/issue-intake/<direction>/` before the run continues.
 
 When that fallback path is used and the run succeeds, the workflow can also comment on and close the consumed GitHub issues on a best-effort basis.
 
@@ -148,9 +148,9 @@ The pipeline:
 
 ### Issue-to-Profile Hybrid Retrieval
 
-When `daily-pipeline` consumes the issue intake, it now synthesizes both `directions/<direction>/profile/interest-profile.md` and the paired `search-profile.json`. This keeps the search profile aligned with the direction, requirements, and constraints captured in the interest profile while tailoring the requests used for search. The pipeline issues arXiv API queries and agent-assisted web retrieval guided by the same search profile, merges those candidates, and ranks them together before producing the final artifacts.
+When `daily-pipeline` consumes the issue intake, it synthesizes both `directions/<direction>/profile/interest-profile.md` and the paired `search-profile.json`. This keeps the search profile aligned with the direction, requirements, and constraints captured in the interest profile while tailoring the requests used for search. The pipeline issues arXiv API queries and agent-assisted web retrieval guided by the same search profile, merges those candidates, and ranks them together before producing the final artifacts.
 
-Relevant papers that are missing PDFs are preserved with `workflow_state.manual_required` and the reason `Needs Manual PDF`. That state indicates operators should download the PDF and place it at `research-workspace/directions/<direction>/papers/<paper_id>/source.pdf`. The next daily run automatically detects the presence of `source.pdf` in the paper directory and resumes ranking, summarizing, and reporting for that paper along with other candidates.
+Relevant papers that are missing PDFs are kept with a `state.json` in a retry/manual-PDF-needed state (typically `status: needs_retry` with `failure_kind: manual_required` or `missing_pdf`). To resume, download the PDF and place it at `research-workspace/directions/<direction>/papers/<stable_arxiv_id>/source.pdf`. Resume only applies to papers that already have a `state.json` (previously selected/queued); metadata-only candidates are not auto-promoted into the selected set.
 
 ## Cron Example
 

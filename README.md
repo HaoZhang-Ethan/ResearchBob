@@ -213,15 +213,15 @@ This side is responsible for:
 
 Key details:
 
-- `daily-pipeline` may auto-generate `directions/<direction>/profile/interest-profile.md` if it is missing
+- `daily-pipeline` may auto-generate `directions/<direction>/profile/interest-profile.md` and `directions/<direction>/profile/search-profile.json` if either is missing
 - `finalize-github --direction <direction>` reads `research-workspace/directions/<direction>/pipeline/github-finalize.json`
 - `finalize-github` exists so GitHub actions can run separately from arXiv/model calls
 
 ##### Issue-to-Profile Hybrid Retrieval
 
-When `daily-pipeline` consumes the issue intake, it now synthesizes both `directions/<direction>/profile/interest-profile.md` and the paired `search-profile.json` so that the search profile mirrors the direction, requirements, and context captured in the interest profile but is tailored to retrieval requests. The pipeline issues both arXiv API queries and agent-assisted web retrieval guided by the search profile, merges those candidates, and ranks them together before generating the rest of the report.
+When `daily-pipeline` consumes the issue intake, it synthesizes both `directions/<direction>/profile/interest-profile.md` and the paired `search-profile.json` so that the search profile mirrors the direction, requirements, and context captured in the interest profile but is tailored to retrieval requests. The pipeline issues both arXiv API queries and agent-assisted web retrieval guided by the search profile, merges those candidates, and ranks them together before generating the rest of the report.
 
-Relevant papers that are missing PDFs are kept rather than discarded; they stay in the output with `workflow_state.manual_required` and the reason `Needs Manual PDF`. Operators can satisfy that state by downloading the PDF and placing it at `research-workspace/directions/<direction>/papers/<paper_id>/source.pdf`. The next daily run automatically detects the new file and resumes ranking/reporting for the previously blocked item.
+Relevant papers that are missing PDFs are kept rather than discarded; they are written under `directions/<direction>/papers/<stable_arxiv_id>/` with a `state.json` in a retry/manual-PDF-needed state (typically `status: needs_retry` with `failure_kind: manual_required` or `missing_pdf`). Operators can satisfy that by downloading the PDF and placing it at `research-workspace/directions/<direction>/papers/<stable_arxiv_id>/source.pdf`. The next daily run detects the new file and resumes analysis for papers that were previously queued (those that already have a `state.json`).
 
 #### Draft the Issue With AI
 
