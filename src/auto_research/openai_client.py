@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 import httpx
 
 from auto_research.models import InterestProfile, RegistryEntry
-from auto_research.search_profile import SearchProfile
+from auto_research.search_profile import SearchProfile, validate_search_profile
 from auto_research.selection import RankedCandidate
 
 
@@ -108,36 +108,47 @@ class OpenAIResponsesClient:
         self._base_url = _normalize_base_url(configured_base_url)
         self._client = client or httpx.Client(timeout=60.0)
 
-    def _request(self, *, instructions: str, input_payload: str, schema: dict) -> dict:
+    def _request(
+        self,
+        *,
+        instructions: str,
+        input_payload: str,
+        schema: dict,
+        tools: list[dict[str, object]] | None = None,
+    ) -> dict:
+        request_json: dict[str, object] = {
+            "model": self._model,
+            "instructions": instructions,
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": input_payload,
+                        }
+                    ],
+                }
+            ],
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": schema["name"],
+                    "schema": schema["schema"],
+                    "strict": True,
+                }
+            },
+        }
+        if tools is not None:
+            request_json["tools"] = tools
+
         response = self._client.post(
             self._base_url,
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": self._model,
-                "instructions": instructions,
-                "input": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "input_text",
-                                "text": input_payload,
-                            }
-                        ],
-                    }
-                ],
-                "text": {
-                    "format": {
-                        "type": "json_schema",
-                        "name": schema["name"],
-                        "schema": schema["schema"],
-                        "strict": True,
-                    }
-                },
-            },
+            json=request_json,
         )
         response.raise_for_status()
         content_type = response.headers.get("content-type", "")
@@ -524,9 +535,10 @@ class OpenAIResponsesClient:
             input_payload=json.dumps({"direction": direction, "issue_texts": issue_texts}, ensure_ascii=False),
             schema=schema,
         )
+        search_profile = validate_search_profile(SearchProfile(**data["search_profile"]))
         return IssueProfileArtifacts(
             interest_profile_markdown=data["interest_profile_markdown"],
-            search_profile=SearchProfile(**data["search_profile"]),
+            search_profile=search_profile,
         )
 
     def retrieve_web_candidates(self, *, search_profile: SearchProfile, limit: int) -> list[dict[str, object]]:
@@ -572,5 +584,6 @@ class OpenAIResponsesClient:
             instructions="Use broader web retrieval to find paper candidates matching the search profile.",
             input_payload=json.dumps({"search_profile": asdict(search_profile), "limit": limit}, ensure_ascii=False),
             schema=schema,
+            tools=[{"type": "web_search"}],
         )
         return list(data["candidates"])
