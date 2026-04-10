@@ -42,7 +42,9 @@ GitHub finalize state is also direction-local under:
 research-workspace/directions/<direction>/pipeline/
 ```
 
-If either `research-workspace/directions/<direction>/profile/interest-profile.md` or `research-workspace/directions/<direction>/profile/search-profile.json` is missing, `daily-pipeline --direction <direction>` will attempt to synthesize both from `research-workspace/issue-intake/<direction>/` before the run continues.
+If `research-workspace/directions/<direction>/profile/interest-profile.md` is missing, `daily-pipeline --direction <direction>` will attempt to synthesize it (and the paired `search-profile.json`) from `research-workspace/issue-intake/<direction>/` before the run continues.
+
+If `interest-profile.md` already exists but `search-profile.json` is missing, the workflow only generates `search-profile.json` and preserves the existing interest profile contents.
 
 When that fallback path is used and the run succeeds, the workflow can also comment on and close the consumed GitHub issues on a best-effort basis.
 
@@ -148,7 +150,7 @@ The pipeline:
 
 ### Issue-to-Profile Hybrid Retrieval
 
-When `daily-pipeline` consumes the issue intake, it synthesizes both `directions/<direction>/profile/interest-profile.md` and the paired `search-profile.json`. This keeps the search profile aligned with the direction, requirements, and constraints captured in the interest profile while tailoring the requests used for search. The pipeline issues arXiv API queries and agent-assisted web retrieval guided by the same search profile, merges those candidates, and ranks them together before producing the final artifacts.
+When `daily-pipeline` consumes the issue intake, it synthesizes the missing direction-local profiles under `directions/<direction>/profile/`. If `interest-profile.md` is missing it is generated along with the paired `search-profile.json`. If only `search-profile.json` is missing, the workflow generates `search-profile.json` and preserves the existing interest profile contents. The pipeline issues arXiv API queries and agent-assisted web retrieval guided by `search-profile.json`, merges those candidates, and ranks them together before producing the final artifacts.
 
 Relevant papers that are missing PDFs are kept with a `state.json` in a retry/manual-PDF-needed state (typically `status: needs_retry` with `failure_kind: manual_required` or `missing_pdf`). To resume, download the PDF and place it at `research-workspace/directions/<direction>/papers/<stable_arxiv_id>/source.pdf`. Resume only applies to papers that already have a `state.json` (previously selected/queued); metadata-only candidates are not auto-promoted into the selected set.
 

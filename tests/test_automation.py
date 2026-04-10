@@ -492,6 +492,211 @@ def test_run_daily_pipeline_synthesizes_issue_profiles_and_attempts_hybrid_retri
     assert client.web_calls == 1
 
 
+def test_run_daily_pipeline_preserves_existing_interest_profile_when_only_search_profile_missing(
+    tmp_path, monkeypatch
+) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    issue_summary = workspace / "issue-intake" / "llm-agents" / "tester" / "summary.md"
+    issue_summary.parent.mkdir(parents=True, exist_ok=True)
+    issue_summary.write_text("# Issue Intake Summary\n\n- Prefer agent systems papers.\n", encoding="utf-8")
+
+    direction_root = workspace / "directions" / "llm-agents"
+    interest_path = direction_root / "profile" / "interest-profile.md"
+    search_path = direction_root / "profile" / "search-profile.json"
+    interest_path.parent.mkdir(parents=True, exist_ok=True)
+    original_interest = (
+        "# Research Interest Profile\n\n"
+        "## Core Interests\n- llm agents (SENTINEL)\n\n"
+        "## Soft Boundaries\n- orchestration\n\n"
+        "## Exclusions\n- pure benchmark papers\n\n"
+        "## Current-Phase Bias\n- strong system design\n\n"
+        "## Evaluation Heuristics\n- prefer recent papers\n\n"
+        "## Open Questions\n- how should agent memory be structured?\n"
+    )
+    interest_path.write_text(original_interest, encoding="utf-8")
+    assert not search_path.exists()
+
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    class TracksIssueProfiles(FakeLLMClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls = 0
+
+        def build_issue_profiles(self, *, direction: str, issue_texts: list[str]) -> IssueProfileArtifacts:
+            self.calls += 1
+            return super().build_issue_profiles(direction=direction, issue_texts=issue_texts)
+
+    llm_client = TracksIssueProfiles()
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-09",
+        ),
+        llm_client=llm_client,
+    )
+
+    assert search_path.exists()
+    assert interest_path.read_text(encoding="utf-8") == original_interest
+    assert llm_client.calls == 1
+
+
+def test_run_daily_pipeline_resumed_papers_preserve_metadata_from_first_run(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    direction_root = workspace / "directions" / "llm-agents"
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+
+    arxiv_entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-25T08:54:53Z",
+        relevance_band="adjacent",
+        source="arxiv",
+    )
+    candidate = RetrievedCandidate(
+        paper_id="2603.23566v1",
+        title=arxiv_entry.title,
+        summary=arxiv_entry.summary,
+        pdf_url="",
+        landing_page_url="https://arxiv.org/abs/2603.23566v1",
+        source_family="arxiv",
+        discovery_sources=["arxiv_api"],
+    )
+
+    monkeypatch.setattr(
+        "auto_research.automation.run_hybrid_retrieval",
+        lambda **kwargs: type(
+            "HybridResult",
+            (),
+            {"candidates": [candidate], "arxiv_entries": [arxiv_entry]},
+        )(),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    llm_client = FakeLLMClient()
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            top_k=1,
+            prefilter_limit=10,
+            max_results=10,
+            label="2026-04-09",
+        ),
+        llm_client=llm_client,
+    )
+
+    stable_id = "2603.23566"
+    paper_dir = direction_root / "papers" / stable_id
+    assert (paper_dir / "state.json").exists()
+    assert (paper_dir / "metadata.json").exists()
+
+    # Operator provides the missing PDF.
+    (paper_dir / "source.pdf").write_bytes(b"%PDF-1.4\nmanual\n")
+
+    monkeypatch.setattr("auto_research.automation.run_hybrid_retrieval", lambda **kwargs: [])
+
+    result = run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            label="2026-04-10",
+        ),
+        llm_client=llm_client,
+    )
+
+    resumed = next(entry for entry in result.selected_entries if entry.arxiv_id == arxiv_entry.arxiv_id)
+    assert resumed.summary == arxiv_entry.summary
+    assert resumed.published_at == arxiv_entry.published_at
+    assert resumed.updated_at == arxiv_entry.updated_at
+    assert resumed.relevance_band == arxiv_entry.relevance_band
+    assert resumed.source == arxiv_entry.source
+
 def test_run_daily_pipeline_infers_direction_from_single_direction_profile(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
     ensure_workspace(workspace)

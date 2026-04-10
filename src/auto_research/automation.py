@@ -19,6 +19,7 @@ from auto_research.github_intake import (
     discover_issue_directions,
     discover_github_repo,
     generate_direction_profiles_from_issue_intake,
+    generate_direction_search_profile_from_issue_intake,
 )
 from auto_research.intake import run_intake
 from auto_research.models import InterestProfile, RegistryEntry, validate_arxiv_id
@@ -404,20 +405,28 @@ def _ensure_profile_exists_with_metadata(
     direction_interest_path = execution_workspace / "profile" / "interest-profile.md"
     direction_search_path = execution_workspace / "profile" / "search-profile.json"
 
-    needs_direction_profiles = not direction_interest_path.exists() or not direction_search_path.exists()
     has_issue_intake = direction in discover_issue_directions(workspace)
-    if needs_direction_profiles and has_issue_intake:
-        # Synthesize both profiles from issue intake so hybrid retrieval (arXiv + web) can run without
-        # manual profile/search-profile setup.
-        generate_direction_profiles_from_issue_intake(
-            workspace=workspace,
-            direction=direction,
-            client=llm_client,
-        )
+    if has_issue_intake:
+        if not direction_interest_path.exists():
+            # Synthesize both profiles from issue intake so hybrid retrieval (arXiv + web) can run without
+            # manual profile/search-profile setup.
+            generate_direction_profiles_from_issue_intake(
+                workspace=workspace,
+                direction=direction,
+                client=llm_client,
+            )
 
-        repo = discover_github_repo()
-        fallback = build_fallback_profile_from_issue_intake(workspace, direction, repo=repo)
-        return (profile_path if profile_path.exists() else direction_interest_path), fallback
+            repo = discover_github_repo()
+            fallback = build_fallback_profile_from_issue_intake(workspace, direction, repo=repo)
+            return (profile_path if profile_path.exists() else direction_interest_path), fallback
+
+        if direction_interest_path.exists() and not direction_search_path.exists():
+            # Interest profile exists already; do not overwrite it. Only generate the missing search profile.
+            generate_direction_search_profile_from_issue_intake(
+                workspace=workspace,
+                direction=direction,
+                client=llm_client,
+            )
 
     if profile_path.exists():
         return profile_path, None
@@ -627,7 +636,12 @@ def _stable_arxiv_id(arxiv_id: str) -> str:
     return match.group("base") if match else arxiv_id
 
 
-def _write_candidate_metadata(*, workspace: Path, candidate: RetrievedCandidate) -> tuple[Path | None, str]:
+def _write_candidate_metadata(
+    *,
+    workspace: Path,
+    candidate: RetrievedCandidate,
+    fallback: RegistryEntry | None = None,
+) -> tuple[Path | None, str]:
     """Persist lightweight metadata for a retrieved candidate.
 
     Returns (metadata_path, pdf_status). metadata_path is None when the paper_id is invalid.
@@ -667,16 +681,31 @@ def _write_candidate_metadata(*, workspace: Path, candidate: RetrievedCandidate)
         pdf_status = "manual_uploaded"
     else:
         pdf_status = "manual_required"
+
+    now = utc_now_iso()
+    first_seen_at = str(existing.get("first_seen_at") or now)
+    summary = candidate.summary.strip() or str(existing.get("summary") or "").strip()
+    if not summary and fallback is not None:
+        summary = fallback.summary
+
     merged = {
         **existing,
         "arxiv_id": safe_arxiv_id,
         "title": candidate.title,
+        "summary": summary,
         "pdf_url": candidate.pdf_url,
         "pdf_status": pdf_status,
         "landing_page_url": candidate.landing_page_url,
         "source_family": candidate.source_family,
         "discovery_sources": list(candidate.discovery_sources),
+        "first_seen_at": first_seen_at,
+        "last_checked_at": now,
     }
+    if fallback is not None:
+        merged["published_at"] = fallback.published_at
+        merged["updated_at"] = fallback.updated_at
+        merged["relevance_band"] = fallback.relevance_band
+        merged["source"] = fallback.source
     metadata_path.write_text(json.dumps(merged, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return metadata_path, pdf_status
 
@@ -913,14 +942,18 @@ def run_daily_pipeline(
     manual_required_titles: list[str] = []
     registry_entries: list[RegistryEntry] = []
     for candidate in retrieved_candidates:
-        _, pdf_status = _write_candidate_metadata(workspace=execution_workspace, candidate=candidate)
-        if pdf_status == "manual_required":
-            manual_required_titles.append(candidate.title)
         arxiv_fallback_entry = None
         if candidate.source_family == "arxiv" or "arxiv_api" in candidate.discovery_sources:
             arxiv_fallback_entry = arxiv_by_id.get(candidate.paper_id) or arxiv_by_id.get(
                 _stable_arxiv_id(candidate.paper_id)
             )
+        _, pdf_status = _write_candidate_metadata(
+            workspace=execution_workspace,
+            candidate=candidate,
+            fallback=arxiv_fallback_entry,
+        )
+        if pdf_status == "manual_required":
+            manual_required_titles.append(candidate.title)
         entry = _candidate_to_registry_entry(candidate, fallback=arxiv_fallback_entry)
         if entry is not None:
             registry_entries.append(entry)
