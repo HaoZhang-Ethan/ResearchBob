@@ -20,7 +20,7 @@ def _normalized_title(title: str) -> str:
 
 
 _ARXIV_VERSIONED_ID_RE = re.compile(
-    r"^(?P<base>(?:\d{4}\.\d{4,5}|[a-z-]+/\d{7}))v\d+$", re.IGNORECASE
+    r"^(?P<base>(?:\d{4}\.\d{4,5}|[a-z0-9.-]+/\d{7}))v\d+$", re.IGNORECASE
 )
 
 

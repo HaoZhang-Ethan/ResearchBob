@@ -126,3 +126,35 @@ def test_merge_retrieved_candidates_dedupes_across_arxiv_versions() -> None:
 
     assert len(merged) == 1
     assert sorted(merged[0].discovery_sources) == ["arxiv_api", "semantic_scholar"]
+
+
+def test_merge_retrieved_candidates_dedupes_across_old_style_arxiv_versions() -> None:
+    arxiv_candidates = [
+        RetrievedCandidate(
+            paper_id="cs.LG/0701234v1",
+            title="Federated Learning Systems at Scale",
+            summary="Old-style arXiv v1.",
+            pdf_url="https://arxiv.org/pdf/cs.LG/0701234v1",
+            landing_page_url="https://arxiv.org/abs/cs.LG/0701234v1",
+            source_family="arxiv",
+            discovery_sources=["arxiv_api"],
+        )
+    ]
+    web_candidates = [
+        RetrievedCandidate(
+            paper_id="cs.LG/0701234v2",
+            title="Federated Learning Systems at Scale (Revised)",
+            summary="Old-style arXiv v2 from web.",
+            pdf_url="https://arxiv.org/pdf/cs.LG/0701234v2",
+            landing_page_url="https://arxiv.org/abs/cs.LG/0701234v2",
+            source_family="semantic_scholar",
+            discovery_sources=["semantic_scholar"],
+        )
+    ]
+
+    merged = merge_retrieved_candidates(
+        arxiv_candidates=arxiv_candidates, web_candidates=web_candidates
+    )
+
+    assert len(merged) == 1
+    assert sorted(merged[0].discovery_sources) == ["arxiv_api", "semantic_scholar"]
