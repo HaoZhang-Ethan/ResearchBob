@@ -802,3 +802,27 @@ def test_compose_report_lists_manual_required_candidates(tmp_path) -> None:
 
     assert "Needs Manual PDF" in report_text
     assert "Federated Learning Systems at Scale" in report_text
+
+
+def test_compose_report_does_not_list_manual_required_when_local_pdf_present(tmp_path) -> None:
+    workspace = ensure_direction_workspace(tmp_path / "research-workspace", "fl-sys")
+    paper_dir = workspace / "papers" / "2501.00001"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    (paper_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "arxiv_id": "2501.00001v1",
+                "title": "Federated Learning Systems at Scale",
+                "pdf_status": "manual_required",
+                "landing_page_url": "https://example.test/paper",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (paper_dir / "source.pdf").write_bytes(b"%PDF-1.4\nmanual\n")
+
+    report_text = compose_report(workspace, mode="daily", label="2026-04-10").read_text(encoding="utf-8")
+
+    assert "Needs Manual PDF" in report_text
+    assert "Federated Learning Systems at Scale" not in report_text

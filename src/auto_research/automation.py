@@ -60,6 +60,12 @@ class PipelineResult:
     history_path: Path
 
 
+@dataclass(slots=True)
+class HybridRetrievalResult:
+    candidates: list[RetrievedCandidate]
+    arxiv_entries: list[RegistryEntry]
+
+
 def _default_label() -> str:
     return date.today().isoformat()
 
@@ -642,7 +648,9 @@ def _write_candidate_metadata(*, workspace: Path, candidate: RetrievedCandidate)
         except Exception:
             existing = {}
 
-    pdf_status = "available" if candidate.pdf_url.strip() else "manual_required"
+    pdf_path = paper_dir / "source.pdf"
+    has_local_pdf = pdf_path.exists() and pdf_path.is_file() and not pdf_path.is_symlink()
+    pdf_status = "available" if (candidate.pdf_url.strip() or has_local_pdf) else "manual_required"
     merged = {
         **existing,
         "arxiv_id": safe_arxiv_id,
@@ -657,7 +665,13 @@ def _write_candidate_metadata(*, workspace: Path, candidate: RetrievedCandidate)
     return metadata_path, pdf_status
 
 
-def _candidate_to_registry_entry(candidate: RetrievedCandidate) -> RegistryEntry | None:
+def _candidate_to_registry_entry(
+    candidate: RetrievedCandidate,
+    *,
+    fallback: RegistryEntry | None = None,
+) -> RegistryEntry | None:
+    if fallback is not None:
+        return fallback
     raw_paper_id = candidate.paper_id.strip()
     try:
         safe_arxiv_id = validate_arxiv_id(raw_paper_id)
@@ -682,7 +696,7 @@ def run_hybrid_retrieval(
     profile_path: Path,
     llm_client: OpenAIResponsesClient,
     max_results: int,
-) -> list[RetrievedCandidate]:
+) -> HybridRetrievalResult:
     """Retrieve candidates from arXiv intake + optional LLM-backed web retrieval, then dedupe."""
     arxiv_entries = run_intake(workspace=workspace, profile_path=profile_path, max_results=max_results)
     arxiv_candidates = [
@@ -703,9 +717,9 @@ def run_hybrid_retrieval(
     if search_profile_path.exists() and search_profile_path.is_file() and not search_profile_path.is_symlink():
         try:
             search_profile = load_search_profile(search_profile_path)
-        except Exception:
-            search_profile = None
-        if search_profile is not None and hasattr(llm_client, "retrieve_web_candidates"):
+        except Exception as exc:
+            raise ValueError(f"Invalid search-profile.json: {search_profile_path}") from exc
+        if hasattr(llm_client, "retrieve_web_candidates"):
             for item in llm_client.retrieve_web_candidates(search_profile=search_profile, limit=max_results):
                 web_candidates.append(
                     RetrievedCandidate(
@@ -719,7 +733,8 @@ def run_hybrid_retrieval(
                     )
                 )
 
-    return merge_retrieved_candidates(arxiv_candidates=arxiv_candidates, web_candidates=web_candidates)
+    merged = merge_retrieved_candidates(arxiv_candidates=arxiv_candidates, web_candidates=web_candidates)
+    return HybridRetrievalResult(candidates=merged, arxiv_entries=arxiv_entries)
 
 
 def run_daily_pipeline(
@@ -741,19 +756,35 @@ def run_daily_pipeline(
     profile = load_interest_profile(profile_path)
 
     client = llm_client or OpenAIResponsesClient(model=config.model)
-    retrieved_candidates = run_hybrid_retrieval(
+    retrieval_result = run_hybrid_retrieval(
         workspace=execution_workspace,
         profile_path=profile_path,
         llm_client=client,
         max_results=config.max_results,
     )
+    if isinstance(retrieval_result, list):
+        retrieved_candidates = retrieval_result
+        arxiv_entries: list[RegistryEntry] = []
+    else:
+        retrieved_candidates = retrieval_result.candidates
+        arxiv_entries = retrieval_result.arxiv_entries
+
+    arxiv_by_id: dict[str, RegistryEntry] = {}
+    for entry in arxiv_entries:
+        arxiv_by_id[entry.arxiv_id] = entry
+        arxiv_by_id[entry.stable_id] = entry
     manual_required_titles: list[str] = []
     registry_entries: list[RegistryEntry] = []
     for candidate in retrieved_candidates:
         _, pdf_status = _write_candidate_metadata(workspace=execution_workspace, candidate=candidate)
         if pdf_status == "manual_required":
             manual_required_titles.append(candidate.title)
-        entry = _candidate_to_registry_entry(candidate)
+        arxiv_fallback_entry = None
+        if candidate.source_family == "arxiv" or "arxiv_api" in candidate.discovery_sources:
+            arxiv_fallback_entry = arxiv_by_id.get(candidate.paper_id) or arxiv_by_id.get(
+                _stable_arxiv_id(candidate.paper_id)
+            )
+        entry = _candidate_to_registry_entry(candidate, fallback=arxiv_fallback_entry)
         if entry is not None:
             registry_entries.append(entry)
 
@@ -774,7 +805,8 @@ def run_daily_pipeline(
                 client=client,
                 overwrite=config.overwrite_summaries,
             )
-            if not entry.pdf_url.strip():
+            pdf_path = _pdf_path(execution_workspace, entry)
+            if not pdf_path.exists() and not entry.pdf_url.strip():
                 update_paper_state(
                     _state_path(execution_workspace, entry),
                     status="needs_retry",

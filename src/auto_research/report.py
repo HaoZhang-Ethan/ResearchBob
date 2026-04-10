@@ -146,6 +146,11 @@ def _load_manual_pdf_entry(paper_dir: Path) -> dict[str, str] | None:
     if error is not None or payload is None:
         return None
 
+    pdf_path = paper_dir / "source.pdf"
+    has_local_pdf = pdf_path.exists() and pdf_path.is_file() and not pdf_path.is_symlink()
+    if has_local_pdf:
+        return None
+
     pdf_status = payload.get("pdf_status")
     if pdf_status != "manual_required":
         return None
