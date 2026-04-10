@@ -914,13 +914,18 @@ def run_daily_pipeline(
     label = config.label or _default_label()
     profile_path = _resolve_profile_path(shared_workspace, execution_workspace, config.profile_path)
     client = llm_client or OpenAIResponsesClient(model=config.model)
-    profile_path, fallback = _ensure_profile_exists_with_metadata(
-        shared_workspace,
-        execution_workspace,
-        direction,
-        profile_path,
-        llm_client=client,
-    )
+    # Explicit profile path is a full override: do not synthesize issue-intake profiles/search-profiles
+    # and do not emit issue-intake fallback/finalize metadata for this run.
+    if config.profile_path is None:
+        profile_path, fallback = _ensure_profile_exists_with_metadata(
+            shared_workspace,
+            execution_workspace,
+            direction,
+            profile_path,
+            llm_client=client,
+        )
+    else:
+        fallback = None
     profile = load_interest_profile(profile_path)
     retrieval_result = run_hybrid_retrieval(
         workspace=execution_workspace,
