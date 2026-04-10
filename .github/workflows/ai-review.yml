@@ -1,0 +1,121 @@
+name: AI PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get PR diff
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > diff.txt
+          echo "Diff size:"
+          wc -c diff.txt
+          head -c 20000 diff.txt > short_diff.txt
+
+      - name: Call proxy API
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          with open("short_diff.txt", "r", encoding="utf-8", errors="ignore") as f:
+              diff = f.read()
+
+          prompt = f"""You are a senior engineer doing pull request review.
+
+Review the following diff and only report real, actionable issues.
+
+Focus on:
+1. Bugs
+2. Security problems
+3. Performance issues
+4. Risky logic or edge cases
+
+Output in markdown with this structure:
+
+## Summary
+- one short paragraph
+
+## Findings
+- If no real issues, say: No critical issues found.
+- Otherwise use bullets:
+  - [severity] file or area: issue
+    - why it matters
+    - suggested fix
+
+Diff:
+{diff}
+"""
+
+          body = {
+              "model": "gpt-5.4",
+              "input": prompt
+          }
+
+          with open("request.json", "w", encoding="utf-8") as f:
+              json.dump(body, f, ensure_ascii=False)
+          PY
+
+          curl -sS http://107.174.93.15:64869/v1/responses \
+            -H "Authorization: Bearer ${{ secrets.OPENAI_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            --data @request.json \
+            -o result.json
+
+          echo "Saved result.json"
+          cat result.json
+
+      - name: Extract review text
+        run: |
+          python - <<'PY'
+          import json
+
+          with open("result.json", "r", encoding="utf-8", errors="ignore") as f:
+              data = json.load(f)
+
+          text = None
+
+          if isinstance(data, dict):
+              text = data.get("output_text")
+
+              if not text and "choices" in data:
+                  try:
+                      text = data["choices"][0]["message"]["content"]
+                  except Exception:
+                      pass
+
+              if not text and "output" in data:
+                  try:
+                      parts = []
+                      for item in data["output"]:
+                          for c in item.get("content", []):
+                              if c.get("type") in ("output_text", "text"):
+                                  parts.append(c.get("text", ""))
+                      text = "\n".join(p for p in parts if p)
+                  except Exception:
+                      pass
+
+          if not text:
+              text = "AI review completed, but I could not parse the model response."
+
+          with open("review.md", "w", encoding="utf-8") as f:
+              f.write(text)
+          PY
+
+      - name: Comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} --body-file review.md
