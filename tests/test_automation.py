@@ -7,7 +7,7 @@ import pytest
 
 from auto_research.automation import PipelineConfig, finalize_github, run_daily_pipeline
 from auto_research.models import RegistryEntry
-from auto_research.openai_client import OpenAIResponsesClient, SummaryArtifact
+from auto_research.openai_client import IssueProfileArtifacts, OpenAIResponsesClient, SummaryArtifact
 from auto_research.retrieval import RetrievedCandidate
 from auto_research.search_profile import SearchProfile, write_search_profile
 from auto_research.workspace import ensure_direction_workspace, ensure_workspace
@@ -62,6 +62,38 @@ class FakeLLMClient:
 
     def update_longterm_findings(self, *, profile, previous_summary, analyses, daily_summary):
         return "# Rolling Themes\n\n- Operator fusion remains central.\n"
+
+    def build_issue_profiles(self, *, direction: str, issue_texts: list[str]) -> IssueProfileArtifacts:
+        del issue_texts
+        profile = SearchProfile(
+            direction=direction,
+            canonical_topic="llm agents",
+            aliases=["agent systems"],
+            related_terms=["orchestration"],
+            exclude_terms=["pure benchmark"],
+            preferred_problem_types=["system design"],
+            preferred_system_axes=["tool use"],
+            retrieval_hints=["prefer recent papers"],
+            seed_queries=["llm agents system design"],
+            source_preferences=["arxiv"],
+        )
+        return IssueProfileArtifacts(
+            interest_profile_markdown=(
+                "# Research Interest Profile\n\n"
+                "> Auto-generated from GitHub issue intake.\n\n"
+                "## Core Interests\n- llm agents\n\n"
+                "## Soft Boundaries\n- orchestration\n\n"
+                "## Exclusions\n- pure benchmark papers\n\n"
+                "## Current-Phase Bias\n- strong system design\n\n"
+                "## Evaluation Heuristics\n- prefer recent papers\n\n"
+                "## Open Questions\n- how should agent memory be structured?\n"
+            ),
+            search_profile=profile,
+        )
+
+    def retrieve_web_candidates(self, *, search_profile: SearchProfile, limit: int) -> list[dict[str, object]]:
+        del search_profile, limit
+        return []
 
 
 def test_openai_client_uses_env_base_url(monkeypatch) -> None:
@@ -239,6 +271,632 @@ def test_run_daily_pipeline_canonicalizes_direction_label(tmp_path, monkeypatch)
     assert not (workspace / "directions" / "LLM Agents").exists()
 
 
+def test_manual_pdf_upload_does_not_resume_metadata_only_candidate(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    direction_root = workspace / "directions" / "llm-agents"
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+
+    selected_candidate = RetrievedCandidate(
+        paper_id="2603.23566v1",
+        title="Selected Paper",
+        summary="Selected summary.",
+        pdf_url="https://example.test/selected.pdf",
+        landing_page_url="https://example.test/selected",
+        source_family="arxiv",
+        discovery_sources=["arxiv_api"],
+    )
+    metadata_only_candidate = RetrievedCandidate(
+        paper_id="2603.99999v1",
+        title="Metadata Only",
+        summary="No PDF URL, should not resume unless previously queued.",
+        pdf_url="",
+        landing_page_url="https://example.test/metadata-only",
+        source_family="web",
+        discovery_sources=["agent_web"],
+    )
+
+    class PicksSelectedFirst(FakeLLMClient):
+        def rank_candidates(self, *, profile, candidates, top_k):
+            target = next(item for item in candidates if item.arxiv_id == selected_candidate.paper_id)
+            return [type("Ranked", (), {"paper_id": target.arxiv_id, "priority_score": 90, "reason": "best"})]
+
+    monkeypatch.setattr(
+        "auto_research.automation.run_hybrid_retrieval",
+        lambda **kwargs: [selected_candidate, metadata_only_candidate],
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            top_k=1,
+            prefilter_limit=10,
+            max_results=10,
+            label="2026-04-09",
+        ),
+        llm_client=PicksSelectedFirst(),
+    )
+
+    # Operator manually provides a PDF for a paper that was never selected/queued for analysis retry.
+    stable_id = "2603.99999"
+    (direction_root / "papers" / stable_id / "source.pdf").parent.mkdir(parents=True, exist_ok=True)
+    (direction_root / "papers" / stable_id / "source.pdf").write_bytes(b"%PDF-1.4\nmanual\n")
+    assert not (direction_root / "papers" / stable_id / "state.json").exists()
+
+    monkeypatch.setattr(
+        "auto_research.automation.run_hybrid_retrieval",
+        lambda **kwargs: [selected_candidate],
+    )
+    result = run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            top_k=1,
+            prefilter_limit=10,
+            max_results=10,
+            label="2026-04-10",
+        ),
+        llm_client=PicksSelectedFirst(),
+    )
+
+    # Regression: manual PDFs should only resume papers that were previously queued (state.json exists in retry state).
+    assert [entry.arxiv_id for entry in result.selected_entries] == [selected_candidate.paper_id]
+
+
+def test_run_daily_pipeline_synthesizes_issue_profiles_and_attempts_hybrid_retrieval(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    # Only issue-intake input exists; direction-local profile/search-profile should be synthesized.
+    issue_summary = workspace / "issue-intake" / "llm-agents" / "tester" / "summary.md"
+    issue_summary.parent.mkdir(parents=True, exist_ok=True)
+    issue_summary.write_text("# Issue Intake Summary\n\n- Prefer agent systems papers.\n", encoding="utf-8")
+
+    direction_root = workspace / "directions" / "llm-agents"
+    interest_path = direction_root / "profile" / "interest-profile.md"
+    search_path = direction_root / "profile" / "search-profile.json"
+    assert not interest_path.exists()
+    assert not search_path.exists()
+
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    class IssueAwareClient(FakeLLMClient):
+        def __init__(self) -> None:
+            self.web_calls = 0
+            self.issue_profile_calls = 0
+
+        def build_issue_profiles(self, *, direction: str, issue_texts: list[str]) -> IssueProfileArtifacts:
+            self.issue_profile_calls += 1
+            profile = SearchProfile(
+                direction=direction,
+                canonical_topic="llm agents",
+                aliases=["agent systems"],
+                related_terms=["tool use"],
+                exclude_terms=["pure benchmark"],
+                preferred_problem_types=["system design"],
+                preferred_system_axes=["orchestration"],
+                retrieval_hints=["prefer recent systems papers"],
+                seed_queries=["llm agents system design"],
+                source_preferences=["arxiv", "semantic scholar"],
+            )
+            return IssueProfileArtifacts(
+                interest_profile_markdown=(
+                    "# Research Interest Profile\n\n## Core Interests\n- llm agents\n\n## Soft Boundaries\n- orchestration\n\n"
+                    "## Exclusions\n- pure benchmark papers\n\n## Current-Phase Bias\n- strong system design\n\n"
+                    "## Evaluation Heuristics\n- prefer recent papers\n\n## Open Questions\n- how should agent memory be structured?\n"
+                ),
+                search_profile=profile,
+            )
+
+        def retrieve_web_candidates(self, *, search_profile: SearchProfile, limit: int) -> list[dict[str, object]]:
+            self.web_calls += 1
+            return []
+
+    client = IssueAwareClient()
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-09",
+        ),
+        llm_client=client,
+    )
+
+    assert interest_path.exists()
+    assert search_path.exists()
+    assert client.issue_profile_calls == 1
+    assert client.web_calls == 1
+
+
+def test_run_daily_pipeline_preserves_existing_interest_profile_when_only_search_profile_missing(
+    tmp_path, monkeypatch
+) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    issue_summary = workspace / "issue-intake" / "llm-agents" / "tester" / "summary.md"
+    issue_summary.parent.mkdir(parents=True, exist_ok=True)
+    issue_summary.write_text("# Issue Intake Summary\n\n- Prefer agent systems papers.\n", encoding="utf-8")
+
+    direction_root = workspace / "directions" / "llm-agents"
+    interest_path = direction_root / "profile" / "interest-profile.md"
+    search_path = direction_root / "profile" / "search-profile.json"
+    interest_path.parent.mkdir(parents=True, exist_ok=True)
+    original_interest = (
+        "# Research Interest Profile\n\n"
+        "## Core Interests\n- llm agents (SENTINEL)\n\n"
+        "## Soft Boundaries\n- orchestration\n\n"
+        "## Exclusions\n- pure benchmark papers\n\n"
+        "## Current-Phase Bias\n- strong system design\n\n"
+        "## Evaluation Heuristics\n- prefer recent papers\n\n"
+        "## Open Questions\n- how should agent memory be structured?\n"
+    )
+    interest_path.write_text(original_interest, encoding="utf-8")
+    assert not search_path.exists()
+
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    class TracksIssueProfiles(FakeLLMClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls = 0
+
+        def build_issue_profiles(self, *, direction: str, issue_texts: list[str]) -> IssueProfileArtifacts:
+            self.calls += 1
+            return super().build_issue_profiles(direction=direction, issue_texts=issue_texts)
+
+    llm_client = TracksIssueProfiles()
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-09",
+        ),
+        llm_client=llm_client,
+    )
+
+    assert search_path.exists()
+    assert interest_path.read_text(encoding="utf-8") == original_interest
+    assert llm_client.calls == 1
+
+
+def test_run_daily_pipeline_resumed_papers_preserve_metadata_from_first_run(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    direction_root = workspace / "directions" / "llm-agents"
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+
+    arxiv_entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-25T08:54:53Z",
+        relevance_band="adjacent",
+        source="arxiv",
+    )
+    candidate = RetrievedCandidate(
+        paper_id="2603.23566v1",
+        title=arxiv_entry.title,
+        summary=arxiv_entry.summary,
+        pdf_url="",
+        landing_page_url="https://arxiv.org/abs/2603.23566v1",
+        source_family="arxiv",
+        discovery_sources=["arxiv_api"],
+    )
+
+    monkeypatch.setattr(
+        "auto_research.automation.run_hybrid_retrieval",
+        lambda **kwargs: type(
+            "HybridResult",
+            (),
+            {"candidates": [candidate], "arxiv_entries": [arxiv_entry]},
+        )(),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    llm_client = FakeLLMClient()
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            top_k=1,
+            prefilter_limit=10,
+            max_results=10,
+            label="2026-04-09",
+        ),
+        llm_client=llm_client,
+    )
+
+    stable_id = "2603.23566"
+    paper_dir = direction_root / "papers" / stable_id
+    assert (paper_dir / "state.json").exists()
+    assert (paper_dir / "metadata.json").exists()
+
+    # Operator provides the missing PDF.
+    (paper_dir / "source.pdf").write_bytes(b"%PDF-1.4\nmanual\n")
+
+    monkeypatch.setattr("auto_research.automation.run_hybrid_retrieval", lambda **kwargs: [])
+
+    result = run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            label="2026-04-10",
+        ),
+        llm_client=llm_client,
+    )
+
+    resumed = next(entry for entry in result.selected_entries if entry.arxiv_id == arxiv_entry.arxiv_id)
+    assert resumed.summary == arxiv_entry.summary
+    assert resumed.published_at == arxiv_entry.published_at
+    assert resumed.updated_at == arxiv_entry.updated_at
+    assert resumed.relevance_band == arxiv_entry.relevance_band
+    assert resumed.source == arxiv_entry.source
+
+
+def test_run_daily_pipeline_with_explicit_profile_path_does_not_synthesize_issue_profiles_or_finalize(
+    tmp_path, monkeypatch
+) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    # Issue-intake exists for the direction, but this run uses an explicit override profile path.
+    issue_summary = workspace / "issue-intake" / "llm-agents" / "tester" / "summary.md"
+    issue_summary.parent.mkdir(parents=True, exist_ok=True)
+    issue_summary.write_text("# Issue Intake Summary\n\n- Prefer agent systems papers.\n", encoding="utf-8")
+
+    override_profile = tmp_path / "override-interest-profile.md"
+    override_profile.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            profile_path=override_profile,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-09",
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    direction_root = workspace / "directions" / "llm-agents"
+    assert not (direction_root / "profile" / "interest-profile.md").exists()
+    assert not (direction_root / "profile" / "search-profile.json").exists()
+    assert not (direction_root / "pipeline" / "github-finalize.json").exists()
+
+
+def test_run_daily_pipeline_with_explicit_profile_path_does_not_use_direction_search_profile_for_web_retrieval(
+    tmp_path, monkeypatch
+) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+
+    # Stale direction-local search profile exists, but explicit profile override must ignore it.
+    direction_root = workspace / "directions" / "llm-agents"
+    (direction_root / "profile").mkdir(parents=True, exist_ok=True)
+    (direction_root / "profile" / "search-profile.json").write_text(
+        json.dumps(
+            {
+                "direction": "llm-agents",
+                "canonical_topic": "stale",
+                "aliases": [],
+                "related_terms": [],
+                "exclude_terms": [],
+                "preferred_problem_types": [],
+                "preferred_system_axes": [],
+                "retrieval_hints": [],
+                "seed_queries": ["stale query"],
+                "source_preferences": ["arxiv"],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    override_profile = tmp_path / "override-interest-profile.md"
+    override_profile.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- llm agents
+
+## Soft Boundaries
+- orchestration
+
+## Exclusions
+- pure benchmark papers
+
+## Current-Phase Bias
+- strong system design
+
+## Evaluation Heuristics
+- prefer recent papers
+
+## Open Questions
+- how should agent memory be structured?
+""",
+        encoding="utf-8",
+    )
+
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    def _load_search_profile_should_not_run(*args, **kwargs):
+        raise AssertionError("explicit profile override must not read direction-local search-profile.json")
+
+    monkeypatch.setattr("auto_research.automation.load_search_profile", _load_search_profile_should_not_run)
+
+    class NoWebClient(FakeLLMClient):
+        def retrieve_web_candidates(self, *, search_profile: SearchProfile, limit: int) -> list[dict[str, object]]:
+            raise AssertionError("explicit profile override must not perform web retrieval")
+
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction="llm-agents",
+            profile_path=override_profile,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-09",
+        ),
+        llm_client=NoWebClient(),
+    )
 def test_run_daily_pipeline_infers_direction_from_single_direction_profile(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "research-workspace"
     ensure_workspace(workspace)
@@ -906,8 +1564,10 @@ def test_run_daily_pipeline_generates_profile_from_requested_direction_issue_int
 
     profile_path = workspace / "directions" / "llm-agents" / "profile" / "interest-profile.md"
     assert profile_path.exists()
-    assert "llm-agents / alice" in profile_path.read_text(encoding="utf-8")
-    assert "robotics / bob" not in profile_path.read_text(encoding="utf-8")
+    search_path = workspace / "directions" / "llm-agents" / "profile" / "search-profile.json"
+    assert search_path.exists()
+    assert json.loads(search_path.read_text(encoding="utf-8"))["direction"] == "llm-agents"
+    assert not (workspace / "directions" / "robotics").exists()
 
 
 def test_run_daily_pipeline_writes_pending_finalize_state(tmp_path, monkeypatch) -> None:

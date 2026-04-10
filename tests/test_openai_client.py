@@ -50,7 +50,7 @@ def test_retrieve_web_candidates_returns_structured_candidates(monkeypatch) -> N
                     "title": "Systems Heterogeneity in Federated Learning",
                     "authors": ["A. Researcher"],
                     "year": 2025,
-                    "arxiv_id": "",
+                    "arxiv_id": "2501.01234v1",
                     "landing_page_url": "https://example.test/paper",
                     "pdf_url": "",
                     "source_family": "semantic_scholar",
@@ -77,6 +77,47 @@ def test_retrieve_web_candidates_returns_structured_candidates(monkeypatch) -> N
 
     assert candidates[0]["source_family"] == "semantic_scholar"
     assert candidates[0]["title"] == "Systems Heterogeneity in Federated Learning"
+    assert candidates[0]["arxiv_id"] == "2501.01234v1"
+
+
+@pytest.mark.parametrize("value", ["", "   ", "\n\t"])
+def test_retrieve_web_candidates_raises_value_error_on_blank_arxiv_id(monkeypatch, value: str) -> None:
+    client = OpenAIResponsesClient(api_key="test-key", client=object())
+
+    monkeypatch.setattr(
+        client,
+        "_request",
+        lambda **kwargs: {
+            "candidates": [
+                {
+                    "title": "Systems Heterogeneity in Federated Learning",
+                    "authors": ["A. Researcher"],
+                    "year": 2025,
+                    "arxiv_id": value,
+                    "landing_page_url": "https://example.test/paper",
+                    "pdf_url": "",
+                    "source_family": "semantic_scholar",
+                    "relevance_reason": "Direct systems relevance",
+                }
+            ]
+        },
+    )
+
+    profile = SearchProfile(
+        direction="fl-sys",
+        canonical_topic="federated learning systems",
+        aliases=["federated learning"],
+        related_terms=["client orchestration"],
+        exclude_terms=[],
+        preferred_problem_types=["systems scalability"],
+        preferred_system_axes=["heterogeneity"],
+        retrieval_hints=["prefer systems papers"],
+        seed_queries=["federated learning systems"],
+        source_preferences=["arxiv", "semantic scholar"],
+    )
+
+    with pytest.raises(ValueError):
+        client.retrieve_web_candidates(search_profile=profile, limit=5)
 
 
 def test_retrieve_web_candidates_enables_web_search_tool_and_propagates_limit(monkeypatch) -> None:

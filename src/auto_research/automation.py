@@ -18,6 +18,8 @@ from auto_research.github_intake import (
     comment_on_issue,
     discover_issue_directions,
     discover_github_repo,
+    generate_direction_profiles_from_issue_intake,
+    generate_direction_search_profile_from_issue_intake,
 )
 from auto_research.intake import run_intake
 from auto_research.models import InterestProfile, RegistryEntry, validate_arxiv_id
@@ -398,23 +400,41 @@ def _ensure_profile_exists_with_metadata(
     execution_workspace: Path,
     direction: str,
     profile_path: Path,
+    llm_client: OpenAIResponsesClient,
 ) -> tuple[Path, object | None]:
+    direction_interest_path = execution_workspace / "profile" / "interest-profile.md"
+    direction_search_path = execution_workspace / "profile" / "search-profile.json"
+
+    has_issue_intake = direction in discover_issue_directions(workspace)
+    if has_issue_intake:
+        if not direction_interest_path.exists():
+            # Synthesize both profiles from issue intake so hybrid retrieval (arXiv + web) can run without
+            # manual profile/search-profile setup.
+            generate_direction_profiles_from_issue_intake(
+                workspace=workspace,
+                direction=direction,
+                client=llm_client,
+            )
+
+            repo = discover_github_repo()
+            fallback = build_fallback_profile_from_issue_intake(workspace, direction, repo=repo)
+            return (profile_path if profile_path.exists() else direction_interest_path), fallback
+
+        if direction_interest_path.exists() and not direction_search_path.exists():
+            # Interest profile exists already; do not overwrite it. Only generate the missing search profile.
+            generate_direction_search_profile_from_issue_intake(
+                workspace=workspace,
+                direction=direction,
+                client=llm_client,
+            )
+
     if profile_path.exists():
         return profile_path, None
-
-    if profile_path.is_symlink():
-        raise OSError(f"Refusing to write symlinked profile file: {profile_path}")
-
-    repo = discover_github_repo()
-    fallback = build_fallback_profile_from_issue_intake(workspace, direction, repo=repo)
-    errors = validate_interest_profile_text(fallback.markdown)
-    if errors:
-        raise ValueError(
-            "Generated invalid fallback interest profile: " + "; ".join(errors)
-        )
-    profile_path.parent.mkdir(parents=True, exist_ok=True)
-    profile_path.write_text(fallback.markdown, encoding="utf-8")
-    return profile_path, fallback
+    if direction_interest_path.exists():
+        return direction_interest_path, None
+    raise ValueError(
+        f"Missing interest profile and no usable issue intake data available for direction: {direction}"
+    )
 
 
 def _infer_direction_from_profile_path(workspace: Path, profile_path: Path | None) -> str | None:
@@ -616,7 +636,12 @@ def _stable_arxiv_id(arxiv_id: str) -> str:
     return match.group("base") if match else arxiv_id
 
 
-def _write_candidate_metadata(*, workspace: Path, candidate: RetrievedCandidate) -> tuple[Path | None, str]:
+def _write_candidate_metadata(
+    *,
+    workspace: Path,
+    candidate: RetrievedCandidate,
+    fallback: RegistryEntry | None = None,
+) -> tuple[Path | None, str]:
     """Persist lightweight metadata for a retrieved candidate.
 
     Returns (metadata_path, pdf_status). metadata_path is None when the paper_id is invalid.
@@ -656,16 +681,31 @@ def _write_candidate_metadata(*, workspace: Path, candidate: RetrievedCandidate)
         pdf_status = "manual_uploaded"
     else:
         pdf_status = "manual_required"
+
+    now = utc_now_iso()
+    first_seen_at = str(existing.get("first_seen_at") or now)
+    summary = candidate.summary.strip() or str(existing.get("summary") or "").strip()
+    if not summary and fallback is not None:
+        summary = fallback.summary
+
     merged = {
         **existing,
         "arxiv_id": safe_arxiv_id,
         "title": candidate.title,
+        "summary": summary,
         "pdf_url": candidate.pdf_url,
         "pdf_status": pdf_status,
         "landing_page_url": candidate.landing_page_url,
         "source_family": candidate.source_family,
         "discovery_sources": list(candidate.discovery_sources),
+        "first_seen_at": first_seen_at,
+        "last_checked_at": now,
     }
+    if fallback is not None:
+        merged["published_at"] = fallback.published_at
+        merged["updated_at"] = fallback.updated_at
+        merged["relevance_band"] = fallback.relevance_band
+        merged["source"] = fallback.source
     metadata_path.write_text(json.dumps(merged, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return metadata_path, pdf_status
 
@@ -719,8 +759,6 @@ def _resume_after_manual_pdf_uploads(
                 wants_resume = True
             elif state.status == "needs_retry" and state.failure_kind in {"missing_pdf", "manual_required"}:
                 wants_resume = True
-        if str(metadata.get("pdf_status", "")).strip() == "manual_required":
-            wants_resume = True
         if not wants_resume:
             continue
 
@@ -824,6 +862,7 @@ def run_hybrid_retrieval(
     profile_path: Path,
     llm_client: OpenAIResponsesClient,
     max_results: int,
+    enable_web: bool = True,
 ) -> HybridRetrievalResult:
     """Retrieve candidates from arXiv intake + optional LLM-backed web retrieval, then dedupe."""
     arxiv_entries = run_intake(workspace=workspace, profile_path=profile_path, max_results=max_results)
@@ -841,25 +880,26 @@ def run_hybrid_retrieval(
     ]
 
     web_candidates: list[RetrievedCandidate] = []
-    search_profile_path = workspace / "profile" / "search-profile.json"
-    if search_profile_path.exists() and search_profile_path.is_file() and not search_profile_path.is_symlink():
-        try:
-            search_profile = load_search_profile(search_profile_path)
-        except Exception as exc:
-            raise ValueError(f"Invalid search-profile.json: {search_profile_path}") from exc
-        if hasattr(llm_client, "retrieve_web_candidates"):
-            for item in llm_client.retrieve_web_candidates(search_profile=search_profile, limit=max_results):
-                web_candidates.append(
-                    RetrievedCandidate(
-                        paper_id=str(item.get("arxiv_id", "")),
-                        title=str(item.get("title", "")),
-                        summary=str(item.get("relevance_reason", "")),
-                        pdf_url=str(item.get("pdf_url", "")),
-                        landing_page_url=str(item.get("landing_page_url", "")),
-                        source_family=str(item.get("source_family", "web")),
-                        discovery_sources=["agent_web"],
+    if enable_web:
+        search_profile_path = workspace / "profile" / "search-profile.json"
+        if search_profile_path.exists() and search_profile_path.is_file() and not search_profile_path.is_symlink():
+            try:
+                search_profile = load_search_profile(search_profile_path)
+            except Exception as exc:
+                raise ValueError(f"Invalid search-profile.json: {search_profile_path}") from exc
+            if hasattr(llm_client, "retrieve_web_candidates"):
+                for item in llm_client.retrieve_web_candidates(search_profile=search_profile, limit=max_results):
+                    web_candidates.append(
+                        RetrievedCandidate(
+                            paper_id=str(item.get("arxiv_id", "")),
+                            title=str(item.get("title", "")),
+                            summary=str(item.get("relevance_reason", "")),
+                            pdf_url=str(item.get("pdf_url", "")),
+                            landing_page_url=str(item.get("landing_page_url", "")),
+                            source_family=str(item.get("source_family", "web")),
+                            discovery_sources=["agent_web"],
+                        )
                     )
-                )
 
     merged = merge_retrieved_candidates(arxiv_candidates=arxiv_candidates, web_candidates=web_candidates)
     return HybridRetrievalResult(candidates=merged, arxiv_entries=arxiv_entries)
@@ -875,20 +915,26 @@ def run_daily_pipeline(
     execution_workspace = ensure_direction_workspace(shared_workspace, direction)
     label = config.label or _default_label()
     profile_path = _resolve_profile_path(shared_workspace, execution_workspace, config.profile_path)
-    profile_path, fallback = _ensure_profile_exists_with_metadata(
-        shared_workspace,
-        execution_workspace,
-        direction,
-        profile_path,
-    )
-    profile = load_interest_profile(profile_path)
-
     client = llm_client or OpenAIResponsesClient(model=config.model)
+    # Explicit profile path is a full override: do not synthesize issue-intake profiles/search-profiles
+    # and do not emit issue-intake fallback/finalize metadata for this run.
+    if config.profile_path is None:
+        profile_path, fallback = _ensure_profile_exists_with_metadata(
+            shared_workspace,
+            execution_workspace,
+            direction,
+            profile_path,
+            llm_client=client,
+        )
+    else:
+        fallback = None
+    profile = load_interest_profile(profile_path)
     retrieval_result = run_hybrid_retrieval(
         workspace=execution_workspace,
         profile_path=profile_path,
         llm_client=client,
         max_results=config.max_results,
+        enable_web=config.profile_path is None,
     )
     if isinstance(retrieval_result, list):
         retrieved_candidates = retrieval_result
@@ -904,14 +950,18 @@ def run_daily_pipeline(
     manual_required_titles: list[str] = []
     registry_entries: list[RegistryEntry] = []
     for candidate in retrieved_candidates:
-        _, pdf_status = _write_candidate_metadata(workspace=execution_workspace, candidate=candidate)
-        if pdf_status == "manual_required":
-            manual_required_titles.append(candidate.title)
         arxiv_fallback_entry = None
         if candidate.source_family == "arxiv" or "arxiv_api" in candidate.discovery_sources:
             arxiv_fallback_entry = arxiv_by_id.get(candidate.paper_id) or arxiv_by_id.get(
                 _stable_arxiv_id(candidate.paper_id)
             )
+        _, pdf_status = _write_candidate_metadata(
+            workspace=execution_workspace,
+            candidate=candidate,
+            fallback=arxiv_fallback_entry,
+        )
+        if pdf_status == "manual_required":
+            manual_required_titles.append(candidate.title)
         entry = _candidate_to_registry_entry(candidate, fallback=arxiv_fallback_entry)
         if entry is not None:
             registry_entries.append(entry)

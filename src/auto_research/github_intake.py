@@ -436,6 +436,28 @@ def generate_direction_profiles_from_issue_intake(
     return interest_path, search_path
 
 
+def generate_direction_search_profile_from_issue_intake(
+    *,
+    workspace: Path,
+    direction: str,
+    client,
+) -> Path:
+    """Generate only `search-profile.json` from issue intake, without overwriting `interest-profile.md`."""
+    direction = canonicalize_direction_slug(direction)
+    issue_texts = _collect_direction_issue_texts(workspace, direction)
+    if not issue_texts:
+        raise ValueError(f"No usable issue intake data available for direction: {direction}")
+    direction_root = ensure_direction_workspace(workspace, direction)
+    search_path = direction_root / "profile" / "search-profile.json"
+
+    if search_path.is_symlink():
+        raise OSError(f"Refusing to write symlinked search profile path: {search_path}")
+
+    artifacts = client.build_issue_profiles(direction=direction, issue_texts=issue_texts)
+    write_search_profile(search_path, artifacts.search_profile)
+    return search_path
+
+
 def sync_issues(
     config: IssueSyncConfig,
     *,
