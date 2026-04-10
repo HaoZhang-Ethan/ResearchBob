@@ -676,13 +676,14 @@ def _resume_after_manual_pdf_uploads(
     profile: InterestProfile,
     client: OpenAIResponsesClient,
     overwrite_summaries: bool,
-) -> None:
+) -> list[RegistryEntry]:
     papers_root = workspace / "papers"
     if not papers_root.exists():
-        return
+        return []
     if papers_root.is_symlink():
         raise OSError(f"Refusing to scan symlinked papers directory: {papers_root}")
 
+    resumed: list[RegistryEntry] = []
     for paper_dir in sorted(path for path in papers_root.iterdir() if path.is_dir()):
         if paper_dir.is_symlink():
             raise OSError(f"Refusing to use symlinked paper directory: {paper_dir}")
@@ -744,6 +745,7 @@ def _resume_after_manual_pdf_uploads(
             relevance_band=str(metadata.get("relevance_band") or "high-match"),
             source=str(metadata.get("source") or metadata.get("source_family") or "unknown"),
         )
+        resumed.append(entry)
 
         # Record that a manual PDF is now present so later runs stop reporting this as blocked.
         if not entry.pdf_url.strip():
@@ -776,6 +778,7 @@ def _resume_after_manual_pdf_uploads(
             client=client,
             summary_path=summary_path,
         )
+    return resumed
 
 
 def _candidate_to_registry_entry(
@@ -952,12 +955,19 @@ def run_daily_pipeline(
                     summary_path=summary_path,
                 )
 
-    _resume_after_manual_pdf_uploads(
+    resumed_entries = _resume_after_manual_pdf_uploads(
         workspace=execution_workspace,
         profile=profile,
         client=client,
         overwrite_summaries=config.overwrite_summaries,
     )
+    if resumed_entries:
+        seen = {entry.stable_id for entry in selected_entries}
+        for entry in resumed_entries:
+            if entry.stable_id in seen:
+                continue
+            selected_entries.append(entry)
+            seen.add(entry.stable_id)
 
     report_path = compose_report(workspace=execution_workspace, mode="daily", label=label)
     analyses = load_detailed_analysis_texts(execution_workspace, selected_entries)

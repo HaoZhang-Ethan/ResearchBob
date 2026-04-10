@@ -2000,10 +2000,10 @@ def test_run_daily_pipeline_resumes_after_manual_pdf_upload(tmp_path, monkeypatc
     (paper_dir / "state.json").write_text(
         json.dumps(
             {
-                "status": "manual_required",
+                "status": "needs_retry",
                 "last_attempt_at": "2026-04-10T00:00:00Z",
                 "last_error": "PDF missing",
-                "failure_kind": "missing_pdf",
+                "failure_kind": "manual_required",
                 "analysis_version": 1,
                 "source_updated_at": "2026-04-10T00:00:00Z",
             },
@@ -2033,14 +2033,38 @@ def test_run_daily_pipeline_resumes_after_manual_pdf_upload(tmp_path, monkeypatc
         ),
     )
 
-    run_daily_pipeline(
+    llm_client = FakeLLMClient()
+    captured: dict[str, object] = {}
+    original_summarize_daily = llm_client.summarize_daily_findings
+
+    def _capture_daily_summary(*, profile, analyses, failed_items):
+        captured["analyses"] = analyses
+        captured["failed_items"] = failed_items
+        return original_summarize_daily(profile=profile, analyses=analyses, failed_items=failed_items)
+
+    monkeypatch.setattr(llm_client, "summarize_daily_findings", _capture_daily_summary)
+
+    result = run_daily_pipeline(
         PipelineConfig(workspace=workspace, direction="fl-sys", label="2026-04-11"),
-        llm_client=FakeLLMClient(),
+        llm_client=llm_client,
     )
 
     assert (paper_dir / "problem-solution.md").exists()
     assert '"status": "analysis_done"' in (paper_dir / "state.json").read_text(encoding="utf-8")
     assert '"pdf_status": "manual_uploaded"' in (paper_dir / "metadata.json").read_text(encoding="utf-8")
+    assert any(entry.arxiv_id == "2501.00001v1" for entry in result.selected_entries)
+
+    bundle = json.loads(result.bundle_path.read_text(encoding="utf-8"))
+    assert any(item["paper_id"] == "2501.00001v1" for item in bundle["selected_papers"])
+
+    history_lines = result.history_path.read_text(encoding="utf-8").splitlines()
+    last_record = json.loads(history_lines[-1])
+    assert "2501.00001v1" in last_record["selected_ids"]
+
+    analyses = captured.get("analyses")
+    assert isinstance(analyses, list)
+    assert len(analyses) == 1
+    assert analyses[0]["paper_id"] == "2501.00001v1"
 
 
 def test_run_daily_pipeline_preserves_arxiv_published_updated_and_relevance(tmp_path, monkeypatch) -> None:
