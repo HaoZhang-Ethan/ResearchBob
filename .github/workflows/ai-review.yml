@@ -192,30 +192,125 @@ jobs:
 
             const rawText = fs.readFileSync('result.json', 'utf8');
 
-            let data;
-            try {
-              data = JSON.parse(rawText);
-            } catch (e) {
-              core.setFailed('AI returned non-JSON response:\n' + rawText.slice(0, 2000));
-              return;
-            }
+            function extractReviewFromResponseObject(data) {
+              let review = data.output_text || '';
 
-            let review = data.output_text || '';
-
-            if (!review && Array.isArray(data.output)) {
-              const parts = [];
-              for (const item of data.output) {
-                for (const c of (item.content || [])) {
-                  if (c.type === 'output_text' || c.type === 'text') {
-                    parts.push(c.text || '');
+              if (!review && Array.isArray(data.output)) {
+                const parts = [];
+                for (const item of data.output) {
+                  for (const c of (item.content || [])) {
+                    if (c.type === 'output_text' || c.type === 'text') {
+                      parts.push(c.text || '');
+                    }
                   }
                 }
+                review = parts.join('\n').trim();
               }
-              review = parts.join('\n').trim();
+
+              if (!review && Array.isArray(data.choices)) {
+                review = data.choices?.[0]?.message?.content || '';
+              }
+
+              return review.trim();
             }
 
-            if (!review && Array.isArray(data.choices)) {
-              review = data.choices?.[0]?.message?.content || '';
+            function parseSSE(text) {
+              const events = [];
+              let eventName = '';
+              let dataLines = [];
+
+              const flush = () => {
+                if (!eventName && dataLines.length === 0) return;
+
+                const dataText = dataLines.join('\n').trim();
+                let parsed = null;
+
+                if (dataText && dataText !== '[DONE]') {
+                  try {
+                    parsed = JSON.parse(dataText);
+                  } catch (_) {
+                    parsed = { raw: dataText };
+                  }
+                }
+
+                events.push({
+                  event: eventName || null,
+                  data: parsed,
+                  rawData: dataText
+                });
+
+                eventName = '';
+                dataLines = [];
+              };
+
+              for (const line of text.split(/\r?\n/)) {
+                if (line.startsWith('event:')) {
+                  eventName = line.slice('event:'.length).trim();
+                } else if (line.startsWith('data:')) {
+                  dataLines.push(line.slice('data:'.length).trimStart());
+                } else if (line.trim() === '') {
+                  flush();
+                }
+              }
+
+              flush();
+              return events;
+            }
+
+            let review = '';
+
+            try {
+              const data = JSON.parse(rawText);
+              review = extractReviewFromResponseObject(data);
+            } catch (_) {
+              const events = parseSSE(rawText);
+
+              const outputTextDone = events
+                .filter(e => e.data && e.data.type === 'response.output_text.done')
+                .map(e => e.data.text || '')
+                .join('\n')
+                .trim();
+
+              if (outputTextDone) {
+                review = outputTextDone;
+              }
+
+              if (!review) {
+                const outputItemDone = events.find(
+                  e => e.data && e.data.type === 'response.output_item.done'
+                );
+
+                if (outputItemDone?.data?.item?.content) {
+                  review = outputItemDone.data.item.content
+                    .filter(c => c.type === 'output_text' || c.type === 'text')
+                    .map(c => c.text || '')
+                    .join('\n')
+                    .trim();
+                }
+              }
+
+              if (!review) {
+                const completed = events.find(
+                  e => e.data && e.data.type === 'response.completed'
+                );
+
+                if (completed?.data?.response) {
+                  review = extractReviewFromResponseObject(completed.data.response);
+                }
+              }
+
+              if (!review) {
+                const failed = events.find(
+                  e => e.data && e.data.type === 'response.failed'
+                );
+
+                if (failed?.data?.response?.error?.message) {
+                  core.setFailed(
+                    'AI response stream failed: ' + failed.data.response.error.message
+                  );
+                  return;
+                }
+              }
             }
 
             if (!review) {
