@@ -55,3 +55,20 @@ def test_extract_english_markdown_returns_original_text_for_legacy_file() -> Non
     text = "# Long-Term Summary\n\n## Current Rolling Summary\nLegacy english only.\n"
 
     assert extract_english_markdown(text) == text.strip()
+
+
+def test_extract_english_markdown_strips_legacy_frontmatter_when_no_anchor_exists() -> None:
+    text = (
+        "---\n"
+        'paper_id: "2501.00001v1"\n'
+        'title: "Legacy Paper"\n'
+        "---\n\n"
+        "# One-Sentence Summary\n"
+        "Legacy english summary.\n"
+    )
+
+    extracted = extract_english_markdown(text)
+
+    assert extracted.startswith("# One-Sentence Summary")
+    assert "Legacy english summary." in extracted
+    assert 'paper_id: "2501.00001v1"' not in extracted

@@ -14,9 +14,24 @@ def _strip_leading_blank_lines(lines: list[str]) -> list[str]:
     return lines
 
 
+def _strip_legacy_frontmatter(text: str) -> str:
+    if not text.startswith("---\n"):
+        return text.strip()
+
+    lines = text.splitlines()
+    if not lines or lines[0] != "---":
+        return text.strip()
+
+    for index in range(1, len(lines)):
+        if lines[index] == "---":
+            body = "\n".join(lines[index + 1 :]).strip()
+            return body if body else text.strip()
+    return text.strip()
+
+
 def _extract_language_markdown(text: str, *, anchor: str, title: str, other_anchor: str | None = None) -> str:
     if anchor not in text:
-        return text.strip() if anchor == ENGLISH_ANCHOR else ""
+        return _strip_legacy_frontmatter(text) if anchor == ENGLISH_ANCHOR else ""
 
     fragment = text.split(anchor, 1)[1].lstrip()
     if other_anchor is not None and other_anchor in fragment:
