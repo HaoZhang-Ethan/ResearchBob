@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2212.01977v2",
+  "title": "Distributed Pruning Towards Tiny Neural Networks in Federated Learning",
+  "summary": "Distributed Pruning looks at how to train compact neural networks in federated settings, emphasizing communication and device-efficiency tradeoffs that matter when clients have limited resources.",
+  "pdf_url": "https://arxiv.org/pdf/2212.01977v2",
+  "published_at": "2022-12-05T01:58:45Z",
+  "updated_at": "2023-07-11T13:09:37Z",
+  "relevance_band": "adjacent",
+  "source": "arxiv"
+}

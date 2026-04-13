@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2404.09816v1",
+  "title": "FedP3: Heterogeneous Federated Learning with Personalized Neural Network Pruning",
+  "summary": "FedP3 studies heterogeneous federated learning under resource constraints, using personalized model pruning so clients with different compute and bandwidth budgets can train and communicate more efficiently while retaining model quality.",
+  "pdf_url": "https://arxiv.org/pdf/2404.09816v1",
+  "published_at": "2024-04-15T14:14:05Z",
+  "updated_at": "2024-04-15T14:14:05Z",
+  "relevance_band": "adjacent",
+  "source": "arxiv"
+}

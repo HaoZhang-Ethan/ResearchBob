@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2209.14520v2",
+  "title": "Towards Scalable and Non-IID Robust Hierarchical Federated Learning via Label-Driven Knowledge Aggregator",
+  "summary": "This work studies hierarchical federated learning for scalability and non-IID robustness, using a label-driven knowledge aggregation design to coordinate learning across multiple levels rather than a single flat server-client topology.",
+  "pdf_url": "https://arxiv.org/pdf/2209.14520v2",
+  "published_at": "2022-09-29T02:49:13Z",
+  "updated_at": "2022-09-30T01:04:41Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}

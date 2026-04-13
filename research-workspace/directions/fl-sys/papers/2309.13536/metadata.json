@@ -1,0 +1,10 @@
+{
+  "arxiv_id": "2309.13536v4",
+  "title": "Tackling Intertwined Data and Device Heterogeneities in Federated Learning via Adaptive Dual Side Depth",
+  "summary": "This paper targets federated learning under intertwined data and device heterogeneity, proposing a system-oriented approach that allocates adaptive model capacity so clients with different hardware limits and data characteristics can participate effectively.",
+  "pdf_url": "https://arxiv.org/pdf/2309.13536v4",
+  "published_at": "2023-09-24T03:19:40Z",
+  "updated_at": "2024-12-24T06:18:23Z",
+  "relevance_band": "high-match",
+  "source": "arxiv"
+}
