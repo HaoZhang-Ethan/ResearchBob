@@ -1,0 +1,31 @@
+TY  - UNPB
+ID  - 2503.22227
+TI  - CAT: A GPU-Accelerated FHE Framework with Its Application to High-Precision Private Dataset Query
+AB  - Direct hit on GPU-accelerated FHE framework. Appears highly aligned with system design: explicitly describes a three-layer architecture, core math layer, combined operations, and API-accessible FHE operators; also says open-source.
+UR  - https://arxiv.org/pdf/2503.22227
+DA  - 2026-04-13
+ER  -
+
+TY  - UNPB
+ID  - 2309.11001
+TI  - GME: GPU-based Microarchitectural Extensions to Accelerate Homomorphic Encryption
+AB  - Architecture/system-focused rather than pure software library. Relevant for mapping HE/FHE primitives to GPU microarchitecture and understanding accelerator-aware bottlenecks.
+UR  - https://arxiv.org/pdf/2309.11001
+DA  - 2026-04-13
+ER  -
+
+TY  - UNPB
+ID  - 2604.03425
+TI  - AEGIS: Scaling Long-Sequence Homomorphic Encrypted Transformer Inference via Hybrid Parallelism on Multi-GPU Systems
+AB  - Application-system paper for encrypted ML on multi-GPU systems. Included because it appears to have substantial systems contribution: hybrid parallelism, memory capacity scaling, and multi-GPU orchestration.
+UR  - https://arxiv.org/pdf/2604.03425
+DA  - 2026-04-13
+ER  -
+
+TY  - UNPB
+ID  - 1811.00778v3
+TI  - Towards the AlexNet Moment for Homomorphic Encryption: HCNN, theFirst Homomorphic CNN on Encrypted Data with GPUs
+AB  - Deep Learning as a Service (DLaaS) stands as a promising solution for cloud-based inference applications. In this setting, the cloud has a pre-learned model whereas the user has samples on which she wants to run the model. The biggest concern with DLaaS is user privacy if the input samples are sensitive data. We provide here an efficient privacy-preserving system by employing high-end technologies such as Fully Homomorphic Encryption (FHE), Convolutional Neural Networks (CNNs) and Graphics Processing Units (GPUs). FHE, with its widely-known feature of computing on encrypted data, empowers a wide range of privacy-concerned applications. This comes at high cost as it requires enormous computing power. In this paper, we show how to accelerate the performance of running CNNs on encrypted data with GPUs. We evaluated two CNNs to classify homomorphically the MNIST and CIFAR-10 datasets. Our solution achieved a sufficient security level (> 80 bit) and reasonable classification accuracy (99%) and (77.55%) for MNIST and CIFAR-10, respectively. In terms of latency, we could classify an image in 5.16 seconds and 304.43 seconds for MNIST and CIFAR-10, respectively. Our system can also classify a batch of images (> 8,000) without extra overhead.
+UR  - https://arxiv.org/pdf/1811.00778v3
+DA  - 2018-11-02
+ER  -
