@@ -6,10 +6,18 @@ from pathlib import Path
 import pytest
 
 from auto_research.automation import PipelineConfig, finalize_github, run_daily_pipeline
+from auto_research.bilingual import render_bilingual_document
+from auto_research.extraction import validate_extraction_document
 from auto_research.models import RegistryEntry
-from auto_research.openai_client import IssueProfileArtifacts, OpenAIResponsesClient, SummaryArtifact
+from auto_research.openai_client import (
+    IssueProfileArtifacts,
+    LongtermSummaryArtifact,
+    OpenAIResponsesClient,
+    SummaryArtifact,
+)
 from auto_research.retrieval import RetrievedCandidate
 from auto_research.search_profile import SearchProfile, write_search_profile
+from auto_research.summary import load_detailed_analysis_texts
 from auto_research.workspace import ensure_direction_workspace, ensure_workspace
 
 
@@ -61,7 +69,10 @@ class FakeLLMClient:
         }
 
     def update_longterm_findings(self, *, profile, previous_summary, analyses, daily_summary):
-        return "# Rolling Themes\n\n- Operator fusion remains central.\n"
+        return LongtermSummaryArtifact(
+            technical_trend_analysis="Compiler and scheduling work is moving toward tighter hardware-aware coordination.",
+            rolling_summary="# Rolling Themes\n\n- Operator fusion remains central.\n",
+        )
 
     def build_issue_profiles(self, *, direction: str, issue_texts: list[str]) -> IssueProfileArtifacts:
         del issue_texts
@@ -94,6 +105,359 @@ class FakeLLMClient:
     def retrieve_web_candidates(self, *, search_profile: SearchProfile, limit: int) -> list[dict[str, object]]:
         del search_profile, limit
         return []
+
+    def translate_fields(self, *, content: dict[str, object], context: str) -> dict[str, object]:
+        del context
+        translated: dict[str, object] = {}
+        for key, value in content.items():
+            if isinstance(value, str):
+                translated[key] = f"中文：{value}"
+            else:
+                translated[key] = [f"中文：{item}" for item in value]
+        return translated
+
+
+def test_run_daily_pipeline_writes_bilingual_paper_artifacts(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    direction = "npu-compiler"
+    direction_root = workspace / "directions" / direction
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- npu compiler
+
+## Soft Boundaries
+- operator fusion
+
+## Exclusions
+- pure theory
+
+## Current-Phase Bias
+- hardware-aware system design
+
+## Evaluation Heuristics
+- prefer hardware-aware work
+
+## Open Questions
+- how to choose fusion boundaries
+""",
+        encoding="utf-8",
+    )
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction=direction,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-02",
+            push=False,
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    artifact_path = direction_root / "papers" / "2603.23566" / "problem-solution.md"
+    detailed_path = direction_root / "papers" / "2603.23566" / "detailed-analysis.md"
+    artifact_text = artifact_path.read_text(encoding="utf-8")
+    detailed_text = detailed_path.read_text(encoding="utf-8")
+
+    assert "[中文版](#chinese-version) | [English](#english-version)" in artifact_text
+    assert "## Chinese Version" in artifact_text
+    assert "## English Version" in artifact_text
+    assert "### 一句话总结" in artifact_text
+    assert "# One-Sentence Summary" in artifact_text
+    assert validate_extraction_document(artifact_text) == []
+    assert "### 详细总结" in detailed_text
+    assert "## Detailed Summary" in detailed_text
+
+
+def test_run_daily_pipeline_writes_bilingual_daily_and_longterm_summaries(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    direction = "npu-compiler"
+    direction_root = workspace / "directions" / direction
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- npu compiler
+
+## Soft Boundaries
+- operator fusion
+
+## Exclusions
+- pure theory
+
+## Current-Phase Bias
+- hardware-aware system design
+
+## Evaluation Heuristics
+- prefer hardware-aware work
+
+## Open Questions
+- how to choose fusion boundaries
+""",
+        encoding="utf-8",
+    )
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    result = run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction=direction,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-02",
+            push=False,
+        ),
+        llm_client=FakeLLMClient(),
+    )
+
+    daily_text = result.daily_summary_path.read_text(encoding="utf-8")
+    longterm_text = result.longterm_summary_path.read_text(encoding="utf-8")
+
+    assert "## Chinese Version" in daily_text
+    assert "## English Version" in daily_text
+    assert "今日核心判断" in daily_text
+    assert "## Headline" in daily_text
+    assert "## Chinese Version" in longterm_text
+    assert "## English Version" in longterm_text
+    assert "技术趋势分析" in longterm_text
+    assert "Technical Trend Analysis" in longterm_text
+
+
+def test_load_detailed_analysis_texts_returns_english_block_from_bilingual_file(tmp_path) -> None:
+    workspace = ensure_workspace(tmp_path / "research-workspace")
+    paper_dir = workspace / "papers" / "2603.23566"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    (paper_dir / "detailed-analysis.md").write_text(
+        render_bilingual_document(
+            chinese_lines=[
+                "### 详细总结",
+                "中文详细总结。",
+            ],
+            english_lines=[
+                "# Test Paper",
+                "",
+                "## Detailed Summary",
+                "English detailed summary.",
+            ],
+        ),
+        encoding="utf-8",
+    )
+
+    items = load_detailed_analysis_texts(
+        workspace,
+        [
+            RegistryEntry(
+                arxiv_id="2603.23566v1",
+                title="Test Paper",
+                summary="summary",
+                pdf_url="https://arxiv.org/pdf/2603.23566v1",
+                published_at="2026-03-24T08:54:53Z",
+                updated_at="2026-03-24T08:54:53Z",
+                relevance_band="high-match",
+                source="arxiv",
+            )
+        ],
+    )
+
+    assert items[0]["analysis"].startswith("# Test Paper")
+    assert "English detailed summary." in items[0]["analysis"]
+    assert "中文详细总结" not in items[0]["analysis"]
+
+
+def test_run_daily_pipeline_uses_english_previous_longterm_summary(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "research-workspace"
+    ensure_workspace(workspace)
+    direction = "npu-compiler"
+    direction_root = workspace / "directions" / direction
+    profile_path = direction_root / "profile" / "interest-profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """# Research Interest Profile
+
+## Core Interests
+- npu compiler
+
+## Soft Boundaries
+- operator fusion
+
+## Exclusions
+- pure theory
+
+## Current-Phase Bias
+- hardware-aware system design
+
+## Evaluation Heuristics
+- prefer hardware-aware work
+
+## Open Questions
+- how to choose fusion boundaries
+""",
+        encoding="utf-8",
+    )
+    longterm_path = direction_root / "reports" / "longterm" / "longterm-summary.md"
+    longterm_path.parent.mkdir(parents=True, exist_ok=True)
+    longterm_path.write_text(
+        render_bilingual_document(
+            chinese_lines=[
+                "# 长期总结",
+                "",
+                "## 当前滚动总结",
+                "中文滚动总结。",
+            ],
+            english_lines=[
+                "# Long-Term Summary",
+                "",
+                "## Current Rolling Summary",
+                "English rolling summary.",
+            ],
+        ),
+        encoding="utf-8",
+    )
+
+    entry = RegistryEntry(
+        arxiv_id="2603.23566v1",
+        title="AscendOptimizer: Episodic Agent for Ascend NPU Operator Optimization",
+        summary="Operator optimization on Ascend NPUs.",
+        pdf_url="https://arxiv.org/pdf/2603.23566v1",
+        published_at="2026-03-24T08:54:53Z",
+        updated_at="2026-03-24T08:54:53Z",
+        relevance_band="high-match",
+        source="arxiv",
+    )
+
+    captured: dict[str, str] = {}
+
+    class CapturingLLMClient(FakeLLMClient):
+        def update_longterm_findings(self, *, profile, previous_summary, analyses, daily_summary):
+            captured["previous_summary"] = previous_summary
+            return super().update_longterm_findings(
+                profile=profile,
+                previous_summary=previous_summary,
+                analyses=analyses,
+                daily_summary=daily_summary,
+            )
+
+    monkeypatch.setattr("auto_research.automation.run_intake", lambda **kwargs: [entry])
+    monkeypatch.setattr(
+        "auto_research.automation.download_pdf",
+        lambda **kwargs: kwargs["destination"].write_bytes(b"%PDF-1.4\nExample text\n"),
+    )
+    monkeypatch.setattr(
+        "auto_research.automation.build_detailed_analysis",
+        lambda **kwargs: (
+            "Example extracted PDF text",
+            {
+                "one_paragraph_summary": "Detailed summary.",
+                "problem": "Detailed problem.",
+                "solution": "Detailed solution.",
+                "key_mechanism": "Detailed mechanism.",
+                "assumptions": "Detailed assumptions.",
+                "strengths": "Detailed strengths.",
+                "weaknesses": "Detailed weaknesses.",
+                "what_is_missing": "Detailed missing.",
+                "why_it_matters": "Detailed relevance.",
+                "follow_up_ideas": "Detailed follow-up.",
+            },
+        ),
+    )
+
+    run_daily_pipeline(
+        PipelineConfig(
+            workspace=workspace,
+            direction=direction,
+            top_k=1,
+            prefilter_limit=5,
+            max_results=5,
+            label="2026-04-02",
+            push=False,
+        ),
+        llm_client=CapturingLLMClient(),
+    )
+
+    assert captured["previous_summary"].startswith("# Long-Term Summary")
+    assert "English rolling summary." in captured["previous_summary"]
+    assert "中文滚动总结" not in captured["previous_summary"]
 
 
 def test_openai_client_uses_env_base_url(monkeypatch) -> None:

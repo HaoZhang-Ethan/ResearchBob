@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 
 from auto_research.analysis import build_detailed_analysis, render_detailed_analysis_markdown
+from auto_research.bilingual import extract_chinese_markdown, extract_english_markdown, render_bilingual_document
 from auto_research.extraction import validate_extraction_document
 from auto_research.github_intake import (
     build_fallback_profile_from_issue_intake,
@@ -88,8 +89,8 @@ def _state_path(workspace: Path, entry: RegistryEntry) -> Path:
     return workspace / "papers" / entry.stable_id.replace("/", "_") / "state.json"
 
 
-def _render_summary_markdown(summary: SummaryArtifact) -> str:
-    lines = [
+def _render_summary_markdown(summary: SummaryArtifact, *, translated: dict[str, object]) -> str:
+    frontmatter_lines = [
         "---",
         f'paper_id: "{summary.paper_id}"',
         f'title: "{summary.title}"',
@@ -97,7 +98,35 @@ def _render_summary_markdown(summary: SummaryArtifact) -> str:
         f'relevance_band: "{summary.relevance_band}"',
         f'opportunity_label: "{summary.opportunity_label}"',
         "---",
+    ]
+    chinese_lines = [
+        "### 一句话总结",
+        str(translated["one_sentence_summary"]),
         "",
+        "### 问题",
+        str(translated["problem"]),
+        "",
+        "### 方案",
+        str(translated["proposed_solution"]),
+        "",
+        "### 核心贡献",
+    ]
+    chinese_lines.extend(f"- {item}" for item in translated["claimed_contributions"])
+    chinese_lines.extend(["", "### 证据依据"])
+    chinese_lines.extend(f"- {item}" for item in translated["evidence_basis"])
+    chinese_lines.extend(["", "### 局限性"])
+    chinese_lines.extend(f"- {item}" for item in translated["limitations"])
+    chinese_lines.extend(
+        [
+            "",
+            "### 与研究方向的相关性",
+            str(translated["relevance_to_profile"]),
+            "",
+            "### 分析备注",
+            str(translated["analyst_notes"]),
+        ]
+    )
+    english_lines = [
         "# One-Sentence Summary",
         summary.one_sentence_summary,
         "",
@@ -109,12 +138,12 @@ def _render_summary_markdown(summary: SummaryArtifact) -> str:
         "",
         "# Claimed Contributions",
     ]
-    lines.extend(f"- {item}" for item in summary.claimed_contributions)
-    lines.extend(["", "# Evidence Basis"])
-    lines.extend(f"- {item}" for item in summary.evidence_basis)
-    lines.extend(["", "# Limitations"])
-    lines.extend(f"- {item}" for item in summary.limitations)
-    lines.extend(
+    english_lines.extend(f"- {item}" for item in summary.claimed_contributions)
+    english_lines.extend(["", "# Evidence Basis"])
+    english_lines.extend(f"- {item}" for item in summary.evidence_basis)
+    english_lines.extend(["", "# Limitations"])
+    english_lines.extend(f"- {item}" for item in summary.limitations)
+    english_lines.extend(
         [
             "",
             "# Relevance to Profile",
@@ -122,10 +151,13 @@ def _render_summary_markdown(summary: SummaryArtifact) -> str:
             "",
             "# Analyst Notes",
             summary.analyst_notes,
-            "",
         ]
     )
-    return "\n".join(lines)
+    return render_bilingual_document(
+        chinese_lines=chinese_lines,
+        english_lines=english_lines,
+        frontmatter_lines=frontmatter_lines,
+    )
 
 
 def _selected_entries_from_ranking(
@@ -155,7 +187,20 @@ def _write_summary_if_needed(
         return output_path
 
     summary = client.summarize_paper(profile=profile, entry=entry)
-    markdown = _render_summary_markdown(summary)
+    translated = client.translate_fields(
+        content={
+            "one_sentence_summary": summary.one_sentence_summary,
+            "problem": summary.problem,
+            "proposed_solution": summary.proposed_solution,
+            "claimed_contributions": summary.claimed_contributions,
+            "evidence_basis": summary.evidence_basis,
+            "limitations": summary.limitations,
+            "relevance_to_profile": summary.relevance_to_profile,
+            "analyst_notes": summary.analyst_notes,
+        },
+        context="problem_solution",
+    )
+    markdown = _render_summary_markdown(summary, translated=translated)
     errors = validate_extraction_document(markdown)
     if errors:
         raise ValueError(f"Generated invalid problem-solution artifact: {'; '.join(errors)}")
@@ -256,10 +301,16 @@ def _write_detailed_analysis_if_needed(
         return None
 
     summary_markdown = summary_path.read_text(encoding="utf-8")
+    translated_sections = client.translate_fields(
+        content=sections,
+        context="detailed_analysis",
+    )
     markdown = render_detailed_analysis_markdown(
         entry=entry,
-        summary_markdown=summary_markdown,
+        english_summary_markdown=extract_english_markdown(summary_markdown),
+        chinese_summary_markdown=extract_chinese_markdown(summary_markdown),
         detailed_sections=sections,
+        translated_sections=translated_sections,
     )
     output_path.write_text(markdown, encoding="utf-8")
     update_paper_state(
@@ -1029,27 +1080,44 @@ def run_daily_pipeline(
         failed_items=failed_items,
     )
     daily_summary_payload["needs_manual_pdf"] = manual_required_titles
+    translated_daily_summary = client_for_summary.translate_fields(
+        content=daily_summary_payload,
+        context="daily_summary",
+    )
     daily_summary_path = write_daily_summary(
         path=execution_workspace / "reports" / "daily" / f"{label}-summary.md",
         label=label,
         payload=daily_summary_payload,
+        translated_payload=translated_daily_summary,
     )
     previous_longterm = ""
     longterm_path = execution_workspace / "reports" / "longterm" / "longterm-summary.md"
     if longterm_path.exists():
-        previous_longterm = longterm_path.read_text(encoding="utf-8")
+        previous_longterm = extract_english_markdown(longterm_path.read_text(encoding="utf-8"))
     generated_longterm = client_for_summary.update_longterm_findings(
         profile=profile,
         previous_summary=previous_longterm,
         analyses=analyses,
         daily_summary=daily_summary_payload,
     )
+    translated_longterm = client_for_summary.translate_fields(
+        content={
+            "new_insights": [entry.summary for entry in selected_entries],
+            "technical_trend_analysis": generated_longterm.technical_trend_analysis,
+            "rolling_summary": generated_longterm.rolling_summary,
+        },
+        context="longterm_summary",
+    )
     longterm_summary_path = update_longterm_summary(
         path=longterm_path,
         daily_report_path=report_path,
         selected_titles=[entry.title for entry in selected_entries],
         selected_summaries=[entry.summary for entry in selected_entries],
-        generated_summary=generated_longterm,
+        translated_selected_summaries=translated_longterm["new_insights"],
+        technical_trend_analysis=generated_longterm.technical_trend_analysis,
+        translated_technical_trend_analysis=str(translated_longterm["technical_trend_analysis"]),
+        generated_summary=generated_longterm.rolling_summary,
+        translated_generated_summary=str(translated_longterm["rolling_summary"]),
     )
     bundle_path = _write_daily_bundle(
         workspace=execution_workspace,

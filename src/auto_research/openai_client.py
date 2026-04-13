@@ -38,8 +38,40 @@ class IssueProfileArtifacts:
     search_profile: SearchProfile
 
 
+@dataclass(slots=True)
+class LongtermSummaryArtifact:
+    technical_trend_analysis: str
+    rolling_summary: str
+
+
 def _schema_section_field(name: str) -> dict:
     return {"type": "string", "description": name}
+
+
+def _schema_for_string_map(*, name: str, content: dict[str, object]) -> dict:
+    properties: dict[str, object] = {}
+    required: list[str] = []
+    for key, value in content.items():
+        required.append(key)
+        if isinstance(value, str):
+            properties[key] = {"type": "string"}
+            continue
+        if isinstance(value, list) and all(isinstance(item, str) for item in value):
+            properties[key] = {
+                "type": "array",
+                "items": {"type": "string"},
+            }
+            continue
+        raise TypeError(f"Unsupported translation field type for {key}: {type(value)!r}")
+    return {
+        "name": name,
+        "schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": properties,
+            "required": required,
+        },
+    }
 
 
 def _extract_text(response_json: dict) -> str:
@@ -160,6 +192,34 @@ class OpenAIResponsesClient:
             return json.loads(text)
         except json.JSONDecodeError as exc:
             raise OpenAIClientError(f"OpenAI returned invalid JSON: {exc}") from exc
+
+    def translate_fields(
+        self,
+        *,
+        content: dict[str, object],
+        context: str,
+    ) -> dict[str, object]:
+        schema = _schema_for_string_map(name=f"{context}_zh", content=content)
+        payload = json.dumps(
+            {
+                "context": context,
+                "content": content,
+                "task": (
+                    "Translate the English content into concise, technically precise Simplified Chinese. "
+                    "Preserve meaning, uncertainty, markdown fragments, and list structure. "
+                    "Do not invent new claims. Leave identifiers, URLs, file paths, and standalone paper titles unchanged when translation would be unnatural."
+                ),
+            },
+            ensure_ascii=False,
+        )
+        return self._request(
+            instructions=(
+                "You translate research-summary content into Simplified Chinese for bilingual Markdown artifacts. "
+                "Keep terminology precise and preserve the input structure exactly."
+            ),
+            input_payload=payload,
+            schema=schema,
+        )
 
     def rank_candidates(
         self,
@@ -450,16 +510,17 @@ class OpenAIResponsesClient:
         previous_summary: str,
         analyses: list[dict[str, str]],
         daily_summary: dict[str, object],
-    ) -> str:
+    ) -> LongtermSummaryArtifact:
         schema = {
             "name": "longterm_summary",
             "schema": {
                 "type": "object",
                 "additionalProperties": False,
                 "properties": {
-                    "markdown": {"type": "string"},
+                    "technical_trend_analysis": {"type": "string"},
+                    "rolling_summary": {"type": "string"},
                 },
-                "required": ["markdown"],
+                "required": ["technical_trend_analysis", "rolling_summary"],
             },
         }
         payload = json.dumps(
@@ -475,7 +536,7 @@ class OpenAIResponsesClient:
                 "daily_summary": daily_summary,
                 "task": (
                     "Update a rolling long-term summary organized by recurring problem clusters, "
-                    "common weaknesses in existing solutions, and the most promising directions."
+                    "common weaknesses in existing solutions, the emerging technical trends, and the most promising directions."
                 ),
             },
             ensure_ascii=False,
@@ -483,12 +544,12 @@ class OpenAIResponsesClient:
         data = self._request(
             instructions=(
                 "You maintain a long-term research summary. "
-                "Keep it compact, cumulative, and organized by problem clusters, recurring gaps, and the most promising directions."
+                "Keep it compact, cumulative, and organized by problem clusters, recurring gaps, technical trends, and the most promising directions."
             ),
             input_payload=payload,
             schema=schema,
         )
-        return data["markdown"]
+        return LongtermSummaryArtifact(**data)
 
     def build_issue_profiles(self, *, direction: str, issue_texts: list[str]) -> IssueProfileArtifacts:
         schema = {
