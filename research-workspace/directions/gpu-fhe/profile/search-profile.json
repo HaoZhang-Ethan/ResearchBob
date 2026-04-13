@@ -1,0 +1,91 @@
+{
+  "direction": "gpu-fhe",
+  "canonical_topic": "GPU acceleration for Fully Homomorphic Encryption (FHE) systems",
+  "aliases": [
+    "gpu fhe",
+    "FHE on GPU",
+    "GPU-accelerated FHE",
+    "homomorphic encryption on GPU",
+    "GPU homomorphic encryption"
+  ],
+  "related_terms": [
+    "fully homomorphic encryption",
+    "homomorphic encryption",
+    "HE",
+    "CKKS",
+    "BFV",
+    "BGV",
+    "TFHE",
+    "bootstrapping",
+    "programmable bootstrapping",
+    "key switching",
+    "relinearization",
+    "NTT",
+    "RNS",
+    "SIMD packing",
+    "ciphertext arithmetic",
+    "GPU kernels",
+    "CUDA",
+    "OpenCL",
+    "GPU accelerator",
+    "heterogeneous acceleration",
+    "system design"
+  ],
+  "exclude_terms": [
+    "benchmark only",
+    "leaderboard",
+    "pure performance comparison",
+    "score stacking",
+    "non-FHE encryption on GPU",
+    "generic cryptography acceleration without homomorphic encryption"
+  ],
+  "preferred_problem_types": [
+    "system design for GPU-accelerated FHE",
+    "mapping FHE primitives to GPU architectures",
+    "GPU acceleration of bootstrapping",
+    "GPU acceleration of NTT/RNS/key switching/relinearization",
+    "end-to-end FHE inference/training systems with substantial systems contribution",
+    "runtime/memory/scheduling optimizations for HE on accelerators"
+  ],
+  "preferred_system_axes": [
+    "clear architecture or system pipeline",
+    "kernel design",
+    "memory layout and bandwidth optimization",
+    "CPU-GPU work partitioning",
+    "batching and parallelization strategy",
+    "support for specific schemes (CKKS/BFV/BGV/TFHE)",
+    "bootstrapping design",
+    "latency vs throughput tradeoffs",
+    "practical deployment constraints",
+    "open-source implementation status"
+  ],
+  "retrieval_hints": [
+    "Prioritize papers whose title/abstract mention system, architecture, framework, runtime, accelerator, CUDA, or GPU kernels.",
+    "Prefer venues/sources that include systems, security, architecture, databases, or applied cryptography angles.",
+    "When a paper is about encrypted ML on GPU, keep it only if it contains substantial FHE systems design rather than merely reporting speedups.",
+    "Extract and highlight problem/method/limitations explicitly during summarization.",
+    "Capture whether code or artifact is released.",
+    "Look for works accelerating core FHE primitives, not just application-level benchmark reports."
+  ],
+  "seed_queries": [
+    "\"fully homomorphic encryption\" GPU system design",
+    "FHE on GPU CUDA paper",
+    "GPU-accelerated homomorphic encryption system",
+    "homomorphic encryption bootstrapping GPU",
+    "TFHE GPU acceleration system",
+    "CKKS GPU acceleration framework",
+    "BFV GPU NTT key switching CUDA",
+    "site:arxiv.org FHE GPU accelerator",
+    "site:ieeexplore.ieee.org homomorphic encryption GPU",
+    "site:dl.acm.org fully homomorphic encryption GPU system"
+  ],
+  "source_preferences": [
+    "arXiv",
+    "IACR ePrint",
+    "ACM Digital Library",
+    "IEEE Xplore",
+    "USENIX/SOSP/OSDI/ASPLOS/HPCA/SC style systems venues",
+    "top security/cryptography venues with implementation papers",
+    "GitHub repositories linked from papers"
+  ]
+}

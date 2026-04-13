@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from auto_research.openai_client import OpenAIResponsesClient
+from auto_research.openai_client import OpenAIClientError, OpenAIResponsesClient
 from auto_research.search_profile import SearchProfile
 
 
@@ -81,7 +81,7 @@ def test_retrieve_web_candidates_returns_structured_candidates(monkeypatch) -> N
 
 
 @pytest.mark.parametrize("value", ["", "   ", "\n\t"])
-def test_retrieve_web_candidates_raises_value_error_on_blank_arxiv_id(monkeypatch, value: str) -> None:
+def test_retrieve_web_candidates_skips_blank_arxiv_id_candidates(monkeypatch, value: str) -> None:
     client = OpenAIResponsesClient(api_key="test-key", client=object())
 
     monkeypatch.setattr(
@@ -98,6 +98,16 @@ def test_retrieve_web_candidates_raises_value_error_on_blank_arxiv_id(monkeypatc
                     "pdf_url": "",
                     "source_family": "semantic_scholar",
                     "relevance_reason": "Direct systems relevance",
+                },
+                {
+                    "title": "Reliable Candidate",
+                    "authors": ["B. Researcher"],
+                    "year": 2025,
+                    "arxiv_id": "2501.01234v1",
+                    "landing_page_url": "https://example.test/reliable",
+                    "pdf_url": "",
+                    "source_family": "arxiv",
+                    "relevance_reason": "Still relevant",
                 }
             ]
         },
@@ -116,8 +126,9 @@ def test_retrieve_web_candidates_raises_value_error_on_blank_arxiv_id(monkeypatc
         source_preferences=["arxiv", "semantic scholar"],
     )
 
-    with pytest.raises(ValueError):
-        client.retrieve_web_candidates(search_profile=profile, limit=5)
+    candidates = client.retrieve_web_candidates(search_profile=profile, limit=5)
+
+    assert [item["title"] for item in candidates] == ["Reliable Candidate"]
 
 
 def test_retrieve_web_candidates_enables_web_search_tool_and_propagates_limit(monkeypatch) -> None:
@@ -150,6 +161,55 @@ def test_retrieve_web_candidates_enables_web_search_tool_and_propagates_limit(mo
 
     tools = captured["tools"]
     assert any(tool.get("type") == "web_search" for tool in tools)
+
+
+def test_retrieve_web_candidates_raises_when_all_candidates_have_blank_arxiv_id(monkeypatch) -> None:
+    client = OpenAIResponsesClient(api_key="test-key", client=object())
+
+    monkeypatch.setattr(
+        client,
+        "_request",
+        lambda **kwargs: {
+            "candidates": [
+                {
+                    "title": "Candidate One",
+                    "authors": ["A. Researcher"],
+                    "year": 2025,
+                    "arxiv_id": "   ",
+                    "landing_page_url": "https://example.test/one",
+                    "pdf_url": "",
+                    "source_family": "web",
+                    "relevance_reason": "Relevant",
+                },
+                {
+                    "title": "Candidate Two",
+                    "authors": ["B. Researcher"],
+                    "year": 2025,
+                    "arxiv_id": "",
+                    "landing_page_url": "https://example.test/two",
+                    "pdf_url": "",
+                    "source_family": "web",
+                    "relevance_reason": "Relevant",
+                },
+            ]
+        },
+    )
+
+    profile = SearchProfile(
+        direction="fl-sys",
+        canonical_topic="federated learning systems",
+        aliases=["federated learning"],
+        related_terms=["client orchestration"],
+        exclude_terms=[],
+        preferred_problem_types=["systems scalability"],
+        preferred_system_axes=["heterogeneity"],
+        retrieval_hints=["prefer systems papers"],
+        seed_queries=["federated learning systems"],
+        source_preferences=["arxiv", "semantic scholar"],
+    )
+
+    with pytest.raises(OpenAIClientError, match="invalid candidates"):
+        client.retrieve_web_candidates(search_profile=profile, limit=5)
 
 
 def test_build_issue_profiles_raises_value_error_on_blank_seed_queries(monkeypatch) -> None:

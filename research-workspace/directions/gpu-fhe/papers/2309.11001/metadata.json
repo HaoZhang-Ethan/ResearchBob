@@ -1,0 +1,14 @@
+{
+  "arxiv_id": "2309.11001",
+  "title": "GME: GPU-based Microarchitectural Extensions to Accelerate Homomorphic Encryption",
+  "summary": "Architecture/system-focused rather than pure software library. Relevant for mapping HE/FHE primitives to GPU microarchitecture and understanding accelerator-aware bottlenecks.",
+  "pdf_url": "https://arxiv.org/pdf/2309.11001",
+  "pdf_status": "available",
+  "landing_page_url": "https://arxiv.org/abs/2309.11001",
+  "source_family": "arXiv",
+  "discovery_sources": [
+    "agent_web"
+  ],
+  "first_seen_at": "2026-04-13T05:35:29Z",
+  "last_checked_at": "2026-04-13T05:35:29Z"
+}

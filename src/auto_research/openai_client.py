@@ -586,10 +586,15 @@ class OpenAIResponsesClient:
             schema=schema,
             tools=[{"type": "web_search"}],
         )
-        candidates = list(data["candidates"])
-        for item in candidates:
-            arxiv_id = str(item.get("arxiv_id", ""))
-            if not arxiv_id.strip():
-                title = str(item.get("title", "")).strip()
-                raise ValueError(f"Web retrieval candidate returned blank arxiv_id (title={title!r})")
+        raw_candidates = list(data["candidates"])
+        candidates: list[dict[str, object]] = []
+        for raw_item in raw_candidates:
+            item = dict(raw_item)
+            arxiv_id = str(item.get("arxiv_id", "")).strip()
+            if not arxiv_id:
+                continue
+            item["arxiv_id"] = arxiv_id
+            candidates.append(item)
+        if raw_candidates and not candidates:
+            raise OpenAIClientError("Web retrieval returned only invalid candidates without arxiv_id")
         return candidates
